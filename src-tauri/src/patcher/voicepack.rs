@@ -236,7 +236,9 @@ impl VoicePack {
         // do not need to reside in memory and corruption is caught before use.
         let mut limited = file.take(u64::from(entry.size));
         let mut hasher = Sha256::new();
-        let mut buffer = [0_u8; 1024 * 1024];
+        // A heap buffer preserves throughput without consuming the 1 MiB stack
+        // reserved for a stock Windows MSVC console entry point.
+        let mut buffer = vec![0_u8; 1024 * 1024];
         let mut written = 0_u64;
         loop {
             let read = limited
@@ -265,7 +267,9 @@ impl VoicePack {
         // still pass per-entry checks when accessed selectively.
         let mut limited = file.take(self.payload_size);
         let mut hasher = Sha256::new();
-        let mut buffer = [0_u8; 1024 * 1024];
+        // Keep the verification path under the same Windows stack limit as the
+        // per-entry copy path instead of relying on a larger linker reserve.
+        let mut buffer = vec![0_u8; 1024 * 1024];
         loop {
             let read = limited
                 .read(&mut buffer)

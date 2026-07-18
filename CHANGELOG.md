@@ -29,6 +29,8 @@ the project uses semantic versioning for public releases.
 - Standardized backend diagnostics and code comments in English.
 - Documented GUI and CLI resource layouts, including bundled and local runtime
   pack requirements.
+- Release CLI builds no longer retain a builder-specific source-tree resource
+  fallback.
 - Updated the frontend toolchain to Vite 8, `@vitejs/plugin-react` 6, and
   TypeScript 7, and synchronized the Tauri dialog bindings at 2.7.2.
 - Updated the checkout, Node.js, and Python setup actions used by CI.
@@ -37,6 +39,8 @@ the project uses semantic versioning for public releases.
 
 - The result action now reveals and selects the generated ROM in Finder or
   Explorer using the permission granted to the application.
+- Large hashing and voice-streaming buffers now use heap storage so the
+  Windows MSVC CLI stays within the default console stack reserve.
 - The Python CI job now keys its dependency cache from
   `requirements-dev.txt`.
 

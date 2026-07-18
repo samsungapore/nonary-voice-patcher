@@ -102,8 +102,7 @@ directory containing `voice-profile.json`:
 4. macOS bundle `Resources/resources` and `Resources` locations;
 5. AppImage and system package locations under `usr/lib` on Linux;
 6. `../share/nonary-voice-patcher/resources` beside the binary;
-7. the absolute development `src-tauri/resources` path recorded at compile
-   time. Its files are not embedded in the binary.
+7. debug builds only: the development `src-tauri/resources` directory.
 
 An explicitly supplied directory is never silently replaced by a fallback.
 

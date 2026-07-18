@@ -214,7 +214,9 @@ fn sha256_bytes(data: &[u8]) -> String {
 fn sha256_file(path: &Path) -> Result<String, EngineError> {
     let mut file = File::open(path).map_err(|error| io_error(path, error))?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    // MSVC gives console entry points a 1 MiB stack, so the streaming buffer
+    // must live on the heap for the CLI to remain portable to stock Windows.
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let read = file
             .read(&mut buffer)
