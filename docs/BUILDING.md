@@ -10,6 +10,9 @@ Run all commands from the `nonary-voice-patcher` repository root.
 - stable Rust and Cargo
 - Python 3.11 or newer for research scripts
 - Tauri 2 platform prerequisites
+- a working native audio-input backend for the Dubbing Studio (CoreAudio on
+  macOS, WASAPI on Windows, or the CPAL-supported backend for the target Linux
+  distribution)
 - optional research tools: ZeroEscapeScript, Crossover/Wine, FFmpeg,
   vgmstream, melonDS, and 999-tools
 
@@ -30,10 +33,16 @@ npm run build
 npm run dev
 ```
 
-Vite can render the interface in a browser, but ROM commands require the Tauri
-backend. Development-only `?qa-language=en` or `?qa-language=fr` parameters
-skip the startup language choice for visual tests; they are excluded from the
-production bundle.
+Vite can render the interface in a browser, but ROM, project, microphone, and
+build commands require the Tauri backend. Development-only
+`?qa-language=en` or `?qa-language=fr` parameters skip the startup language
+choice. Add `&qa-view=dubbing` to open the Dubbing Studio directly, for example:
+
+```text
+http://localhost:1420/?qa-language=en&qa-view=dubbing
+```
+
+These parameters are ignored by production builds.
 
 ## Desktop application
 
@@ -41,6 +50,10 @@ production bundle.
 npm run tauri dev
 npm run tauri build
 ```
+
+The configured desktop window opens at 1360×860 and can shrink to 860×680.
+GUI builds enable the native recorder, WAV writer, and high-quality resampler;
+the native Studio path does not require Python or FFmpeg.
 
 `tauri.conf.json` bundles the `src-tauri/resources/` directory. A clean clone
 can compile because the public profile is present, but applying voices requires
@@ -53,7 +66,22 @@ src-tauri/resources/voices-en.nvpack
 
 Voice packs are generated separately using
 [HACK_PROCESS.md](HACK_PROCESS.md) and are excluded from Git. Missing packs
-produce a runtime resource error.
+produce a runtime resource error only when the corresponding Japanese or
+English patch is applied. Project creation, microphone recording, and a French
+preview test-ROM build use the public profile plus the selected ROM and project
+WAV files; they do not require either private JP/EN pack. See
+[DUBBING_STUDIO.md](DUBBING_STUDIO.md).
+
+The Python preview/production fallback is run from the same development
+environment:
+
+```sh
+python scripts/build_dubbing_project.py --help
+```
+
+It creates an explicit French NVPACK v2 and a `.json` report. The native GUI
+instead writes `builds/voices-fr-preview.nvpack` with no report sidecar and
+immediately applies it to the selected test-ROM destination.
 
 ## Headless CLI
 

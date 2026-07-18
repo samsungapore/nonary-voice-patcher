@@ -14,6 +14,7 @@ import {
   FolderOpen,
   GameController,
   Globe,
+  Microphone,
   SpeakerHigh,
   SpeakerSlash,
   SpinnerGap,
@@ -26,14 +27,18 @@ import startSubImage from "./assets/999/start-sub.png";
 import corridorImage from "./assets/999/flooded-corridor.png";
 import doorImage from "./assets/999/numbered-door.png";
 import musicTrack from "./assets/999/bgm-mystery.mp3";
+import { DubbingStudioView } from "./features/dubbing/DubbingStudioView";
 import "./App.css";
 
 type UiLanguage = "fr" | "en";
+type AppView = "patcher" | "dubbing";
 type VoiceLanguage = "japanese" | "english";
+type PatchLanguage = VoiceLanguage | "french";
 type RomPatchState =
   | "clean"
   | "japanese"
   | "english"
+  | "french"
   | "legacy_voice_patch"
   | "unsupported";
 
@@ -63,7 +68,7 @@ interface PatchResult {
   outputPath: string;
   bytes: number;
   sha256: string;
-  language: VoiceLanguage | null;
+  language: PatchLanguage | null;
   voices: number;
   scripts: number;
   resetExact: boolean;
@@ -77,6 +82,8 @@ const COPY = {
     audioOn: "Musique active",
     chooseLanguage: "Langue de l’interface",
     navigation: "Commandes de l’application",
+    patcherView: "Patcher une ROM",
+    dubbingView: "Studio de doublage",
     heroEyebrow: "PATCH DOUBLAGE",
     heroTitle: "Doublage 999 sur Nintendo DS.",
     stepRom: "ROM 999",
@@ -112,6 +119,8 @@ const COPY = {
     audioOn: "Music playing",
     chooseLanguage: "Interface language",
     navigation: "Application controls",
+    patcherView: "Patch a ROM",
+    dubbingView: "Dubbing studio",
     heroEyebrow: "VOICE DUBBING",
     heroTitle: "999 dubbing on Nintendo DS.",
     stepRom: "999 ROM",
@@ -201,6 +210,7 @@ function stateLabel(state: RomPatchState, language: UiLanguage): string {
       clean: "Compatible",
       japanese: "Voix japonaises",
       english: "Voix anglaises",
+      french: "Voix françaises",
       legacy_voice_patch: "Ancien patch",
       unsupported: "Non compatible",
     },
@@ -208,6 +218,7 @@ function stateLabel(state: RomPatchState, language: UiLanguage): string {
       clean: "Compatible",
       japanese: "Japanese voices",
       english: "English voices",
+      french: "French voices",
       legacy_voice_patch: "Legacy patch",
       unsupported: "Unsupported",
     },
@@ -278,8 +289,12 @@ function App() {
     ? new URLSearchParams(window.location.search)
     : null;
   const qaLanguage = qaParameters?.get("qa-language");
+  const qaView = qaParameters?.get("qa-view");
   const [uiLanguage, setUiLanguage] = useState<UiLanguage | null>(
     qaLanguage === "fr" || qaLanguage === "en" ? qaLanguage : null,
+  );
+  const [appView, setAppView] = useState<AppView>(
+    qaView === "dubbing" ? "dubbing" : "patcher",
   );
   const [capabilities, setCapabilities] = useState<Capabilities>(fallbackCapabilities);
   const [romPath, setRomPath] = useState<string | null>(null);
@@ -291,6 +306,8 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [studioOperationActive, setStudioOperationActive] = useState(false);
+  const [studioNavigationLocked, setStudioNavigationLocked] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const japaneseVoiceRef = useRef<HTMLButtonElement>(null);
   const englishVoiceRef = useRef<HTMLButtonElement>(null);
@@ -322,19 +339,22 @@ function App() {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = 0.15;
-    if (audioEnabled) {
+    if (audioEnabled && !studioOperationActive) {
       void audio.play().catch(() => setAudioEnabled(false));
     } else {
       audio.pause();
     }
-  }, [audioEnabled]);
+  }, [audioEnabled, studioOperationActive]);
 
   const language = uiLanguage ?? "fr";
   const t = COPY[language];
+  const navigationLocked = busy || studioOperationActive || studioNavigationLocked;
   const canPatch = Boolean(romInfo?.compatible && !busy);
   const canReset = Boolean(
     romInfo &&
-      (romInfo.state === "japanese" || romInfo.state === "english") &&
+      (romInfo.state === "japanese" ||
+        romInfo.state === "english" ||
+        romInfo.state === "french") &&
       !busy,
   );
   const progressPercent = useMemo(() => {
@@ -510,6 +530,26 @@ function App() {
             <div className="product-name">{t.appName}</div>
             <div className="product-subtitle">{t.appSubtitle}</div>
           </div>
+          <nav className="workspace-navigation" aria-label={t.navigation}>
+            <button
+              aria-current={appView === "patcher" ? "page" : undefined}
+              disabled={navigationLocked}
+              onClick={() => setAppView("patcher")}
+              type="button"
+            >
+              <Waveform size={18} weight="bold" />
+              <span>{t.patcherView}</span>
+            </button>
+            <button
+              aria-current={appView === "dubbing" ? "page" : undefined}
+              disabled={navigationLocked}
+              onClick={() => setAppView("dubbing")}
+              type="button"
+            >
+              <Microphone size={18} weight="bold" />
+              <span>{t.dubbingView}</span>
+            </button>
+          </nav>
           <div className="utility-actions" aria-label={t.navigation}>
             <button
               aria-pressed={audioEnabled}
@@ -522,6 +562,7 @@ function App() {
             </button>
             <button
               aria-label={t.chooseLanguage}
+              disabled={navigationLocked}
               onClick={() => setUiLanguage(null)}
               title={t.chooseLanguage}
               type="button"
@@ -532,12 +573,19 @@ function App() {
         </div>
       </aside>
 
-      <section className="app-stage">
+      <section className={`app-stage ${appView === "dubbing" ? "is-studio" : ""}`}>
         <header className="topbar">
           <div><Circle size={7} weight="fill" /> NONARY SYSTEM</div>
           <div>BSKE / v{capabilities.appVersion}</div>
         </header>
 
+        {appView === "dubbing" ? (
+          <DubbingStudioView
+            language={language}
+            onExclusiveOperationChange={setStudioOperationActive}
+            onNavigationLockChange={setStudioNavigationLocked}
+          />
+        ) : (
         <main className="content voices-content">
           <section className="hero-card">
             <div className="hero-copy">
@@ -666,6 +714,7 @@ function App() {
             </button>
           </footer>
         </main>
+        )}
       </section>
     </div>
   );

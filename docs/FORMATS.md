@@ -7,34 +7,53 @@ values. Parser validation is authoritative.
 ## Voice pack (`NVPACK01`)
 
 Voice packs contain generated DS `.se` files without recompression. Version 1
-has a fixed 0x70-byte header:
+is used by the established Japanese and English packs. Version 2 binds the
+ordered entries to a voice-profile catalogue and is required for French packs.
+
+The common header prefix is:
 
 | Offset | Size | Field |
 | ---: | ---: | --- |
 | `0x00` | 8 | ASCII magic `NVPACK01` |
-| `0x08` | 4 | Version (`1`) |
+| `0x08` | 4 | Version (`1` or `2`) |
 | `0x0c` | 4 | Entry count |
-| `0x10` | 4 | Language: `jp\0\0` or `en\0\0` |
+| `0x10` | 4 | Language: `jp\0\0`, `en\0\0`, or `fr\0\0` |
 | `0x14` | 4 | Reserved, zero |
-| `0x18` | 8 | Entry-table offset (`0x70`) |
+| `0x18` | 8 | Entry-table offset (`0x70` for v1, `0x90` for v2) |
 | `0x20` | 8 | Payload offset |
 | `0x28` | 8 | Payload byte length |
-| `0x30` | 32 | SHA-256 of the entry table |
+| `0x30` | 32 | Authenticated entry-table digest described below |
 | `0x50` | 32 | SHA-256 of the complete payload |
+
+The v1 header ends at `0x70`; its table digest is the SHA-256 of the raw entry
+table. The v2 header adds:
+
+| Offset | Size | Field |
+| ---: | ---: | --- |
+| `0x70` | 32 | Voice-catalogue SHA-256 |
+
+For v2, the digest at `0x30` is:
+
+```text
+SHA-256("NVPACK02-INDEX\0" || catalogue_sha256 || raw_entry_table)
+```
+
+This binds the table and the catalogue digest in one authenticated value.
 
 Each 40-byte entry contains:
 
 | Offset | Size | Field |
 | ---: | ---: | --- |
 | `0x00` | 4 | Payload size |
-| `0x04` | 2 | Flags, zero in version 1 |
+| `0x04` | 2 | Flags, zero |
 | `0x06` | 2 | Reserved, zero |
 | `0x08` | 32 | SHA-256 of this `.se` payload |
 
 The payload starts at the next 16-byte boundary after the table. Entries are
 concatenated in `se_v0000.se`, `se_v0001.se`, … order. There are no filenames
 inside the pack because the stable index defines both the generated symbol and
-NitroFS basename.
+NitroFS basename. At patch time, a French pack must be v2 and its catalogue
+digest must equal the digest recomputed from the selected profile.
 
 ## Voice profile (`voice-profile.json`)
 
@@ -68,6 +87,82 @@ SHA-256, accepted already-clean hashes, and offset/expected/replacement byte
 triples. A repair runs only when the complete input fingerprint and every
 preimage agree.
 
+### Voice-catalogue digest
+
+The catalogue digest is independent of profile JSON formatting. It is SHA-256
+over the following byte sequence:
+
+```text
+"NVPACK-CATALOG-V1\0"
+voice_count as u64
+for every voice in profile script order:
+  symbol UTF-8 byte length as u64, then symbol bytes
+  script-path UTF-8 byte length as u64, then path bytes
+  setText ordinal as u64
+```
+
+The length and integer fields are little-endian. Both the dubbing project and
+French NVPACK v2 store this digest, so harmless profile JSON reformatting does
+not change the catalogue identity. Projects also retain the raw profile-file
+hash as provenance.
+
+## Dubbing project (`project.nvdub.json`)
+
+The project manifest is JSON version 1 with camel-case field names. Its root
+contains:
+
+- project name and creation/update timestamps;
+- source-ROM filename, game code, and logical base-ROM SHA-256;
+- raw profile-file SHA-256 and the stable voice-catalogue SHA-256;
+- a `targets` object keyed by the complete `SE_V0000` through `SE_V6413`
+  sequence.
+
+Each target stores its structural `targetId` (`script_path#ordinal`), status,
+notes, active-take ID, take list, gain, trim values, and optional approval
+digest. Each take stores a project-relative WAV path, recording dimensions,
+level statistics, creation time, and the SHA-256 of the committed file.
+
+The manifest intentionally contains no dialogue, surrounding context, speaker
+text, ROM bytes, or profile copy. The application reconstructs the 6,414 cues
+and their same-function context from the selected ROM whenever the project is
+opened.
+
+The normal directory layout is:
+
+```text
+project/
+├── .project.nvdub.lock
+├── project.nvdub.json
+├── recordings/
+│   └── SE_V####/
+│       └── take-<timestamp>-<sequence>.wav
+└── builds/
+    └── voices-fr-preview.nvpack
+```
+
+The hidden lock file coordinates manifest updates across local application
+instances and command-line builders. A builder holds it from manifest snapshot
+through atomic publication of its pack and any report or test ROM, so project
+edits cannot invalidate an output before publication completes. It carries no
+project data and may be recreated when no application has the project open.
+
+Committed masters are 16-bit PCM WAV files at the capture-device sample rate.
+The stored SHA-256 and dimensions are checked before reading, selection,
+approval, or export. An approval digest is:
+
+```text
+SHA-256(
+  "NVDUB_APPROVAL_V1\0" ||
+  lowercase_take_sha256_ascii ||
+  gain_db_f32_bits_as_u32 ||
+  trim_start_ms_as_u64 ||
+  trim_end_ms_as_u64
+)
+```
+
+Numeric fields in that digest are little-endian. Selecting another take or
+changing bound processing settings therefore requires a new approval.
+
 ## Restoration receipt (`NVPBASE1` / `NVPRCP01`)
 
 The receipt body is 580 bytes (`0x244`):
@@ -81,7 +176,7 @@ The receipt body is 580 bytes (`0x244`):
 | `0x018` | 32 | Original ROM SHA-256 |
 | `0x038` | 512 | Original NDS header preimage |
 | `0x238` | 4 | Original bytes at ROM offset `0x1000` |
-| `0x23c` | 4 | Language (`jp\0\0` or `en\0\0`) |
+| `0x23c` | 4 | Language (`jp\0\0`, `en\0\0`, or `fr\0\0`) |
 | `0x240` | 4 | Original game code |
 
 It is followed by a 16-byte marker: `NVPRCP01` and the 64-bit receipt length.

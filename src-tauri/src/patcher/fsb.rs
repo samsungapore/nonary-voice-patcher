@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use encoding_rs::SHIFT_JIS;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -59,6 +60,14 @@ pub struct Script {
     pub strings: Vec<Vec<u8>>,
     pub exported_labels: Vec<Vec<u8>>,
     pub global_variables: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DialogueLine {
+    pub ordinal: usize,
+    pub function_name: Vec<u8>,
+    pub speaker: Vec<u8>,
+    pub text: Vec<u8>,
 }
 
 /// Compatibility result kept separate so callers cannot silently ignore that
@@ -578,6 +587,38 @@ fn wait_sequence(symbol: &str) -> Vec<Operation> {
 }
 
 impl Script {
+    pub fn dialogue_lines(&self) -> Vec<DialogueLine> {
+        let mut lines = Vec::new();
+        let mut speaker = Vec::new();
+        let mut ordinal = 0usize;
+
+        for function in &self.functions {
+            for operation in &function.operations {
+                match operation {
+                    Operation::String {
+                        command: 0x28,
+                        value,
+                    } => speaker.clone_from(value),
+                    Operation::String {
+                        command: 0x2f,
+                        value,
+                    } => {
+                        lines.push(DialogueLine {
+                            ordinal,
+                            function_name: function.name.clone(),
+                            speaker: speaker.clone(),
+                            text: value.clone(),
+                        });
+                        ordinal += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        lines
+    }
+
     pub fn set_text_count(&self) -> usize {
         self.functions
             .iter()
@@ -768,6 +809,99 @@ impl Script {
         output[8..12].copy_from_slice(&relocation_offset.to_le_bytes());
         Ok(output)
     }
+}
+
+fn private_french_glyph(pair: &[u8]) -> Option<char> {
+    match pair {
+        [0x84, 0xbf] => Some('é'),
+        [0x84, 0xc0] => Some('è'),
+        [0x84, 0xc1] => Some('ê'),
+        [0x84, 0xc2] => Some('ë'),
+        [0x84, 0xc3] => Some('à'),
+        [0x84, 0xc4] => Some('â'),
+        [0x84, 0xc5] => Some('ù'),
+        [0x84, 0xc6] => Some('û'),
+        [0x84, 0xc7] => Some('î'),
+        [0x84, 0xc8] => Some('ï'),
+        [0x84, 0xc9] => Some('ô'),
+        [0x84, 0xca] => Some('ç'),
+        [0x84, 0xcb] => Some('Ç'),
+        [0x84, 0xcc] => Some('À'),
+        [0x84, 0xcd] => Some('É'),
+        [0x84, 0xce] => Some('Ê'),
+        _ => None,
+    }
+}
+
+fn shift_jis_character_len(first: u8) -> usize {
+    if (0x81..=0x9f).contains(&first) || (0xe0..=0xfc).contains(&first) {
+        2
+    } else {
+        1
+    }
+}
+
+fn discard_display_control<I>(characters: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = char>,
+{
+    let Some(command) = characters.peek().copied() else {
+        return;
+    };
+    if !matches!(
+        command,
+        'B' | 'C' | 'F' | 'K' | 'N' | 'S' | 'Z' | 'c' | 'f' | 'n' | 's' | 'w'
+    ) {
+        return;
+    }
+    characters.next();
+    if command == 'B' && characters.peek().is_some_and(char::is_ascii_uppercase) {
+        characters.next();
+        return;
+    }
+
+    let mut consumed_number = false;
+    while characters.peek().is_some_and(char::is_ascii_digit) {
+        characters.next();
+        consumed_number = true;
+    }
+    if consumed_number && characters.peek() == Some(&'.') {
+        characters.next();
+    }
+}
+
+pub fn decode_display_text(raw: &[u8]) -> String {
+    let mut decoded = String::new();
+    let mut cursor = 0usize;
+    while cursor < raw.len() {
+        if let Some(glyph) = raw
+            .get(cursor..cursor.saturating_add(2))
+            .and_then(private_french_glyph)
+        {
+            decoded.push(glyph);
+            cursor += 2;
+            continue;
+        }
+
+        let length = shift_jis_character_len(raw[cursor]).min(raw.len() - cursor);
+        let (character, _) = SHIFT_JIS.decode_without_bom_handling(&raw[cursor..cursor + length]);
+        decoded.push_str(&character);
+        cursor += length;
+    }
+
+    let mut display = String::with_capacity(decoded.len());
+    let mut characters = decoded.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            'Ｓ' => display.push('\''),
+            'Ｄ' => display.push('"'),
+            '⑲' => display.push('\n'),
+            '⑳' => discard_display_control(&mut characters),
+            '▼' | '│' => {}
+            _ => display.push(character),
+        }
+    }
+    display
 }
 
 fn collect_strings(script: &Script) -> Vec<Vec<u8>> {
@@ -993,6 +1127,113 @@ mod tests {
 
     fn project_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[test]
+    fn dialogue_lines_keep_global_context_across_functions() {
+        let script = Script {
+            name: b"context_test".to_vec(),
+            functions: vec![
+                Function {
+                    name: b"opening".to_vec(),
+                    operations: vec![
+                        Operation::String {
+                            command: 0x28,
+                            value: b"Junpei".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"First".to_vec(),
+                        },
+                    ],
+                },
+                Function {
+                    name: b"branch".to_vec(),
+                    operations: vec![
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"Second".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x28,
+                            value: b"Akane".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"Third".to_vec(),
+                        },
+                    ],
+                },
+            ],
+            strings: Vec::new(),
+            exported_labels: Vec::new(),
+            global_variables: Vec::new(),
+        };
+
+        assert_eq!(
+            script.dialogue_lines(),
+            vec![
+                DialogueLine {
+                    ordinal: 0,
+                    function_name: b"opening".to_vec(),
+                    speaker: b"Junpei".to_vec(),
+                    text: b"First".to_vec(),
+                },
+                DialogueLine {
+                    ordinal: 1,
+                    function_name: b"branch".to_vec(),
+                    speaker: b"Junpei".to_vec(),
+                    text: b"Second".to_vec(),
+                },
+                DialogueLine {
+                    ordinal: 2,
+                    function_name: b"branch".to_vec(),
+                    speaker: b"Akane".to_vec(),
+                    text: b"Third".to_vec(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn display_text_decodes_japanese_cp932() {
+        assert_eq!(
+            decode_display_text(&[
+                0x8f, 0x7e, 0x95, 0xbd, b':', 0x82, 0xb1, 0x82, 0xf1, 0x82, 0xc9, 0x82, 0xbf, 0x82,
+                0xcd,
+            ]),
+            "淳平:こんにちは"
+        );
+    }
+
+    #[test]
+    fn display_text_decodes_private_french_glyphs() {
+        let mut raw = Vec::new();
+        for trail in 0xbf..=0xce {
+            raw.extend_from_slice(&[0x84, trail]);
+        }
+        assert_eq!(decode_display_text(&raw), "éèêëàâùûîïôçÇÀÉÊ");
+    }
+
+    #[test]
+    fn display_text_normalizes_punctuation_breaks_and_controls() {
+        let mut raw = vec![0x82, 0x72, 0x82, 0x63, 0x87, 0x52];
+        for control in [
+            b"n".as_slice(),
+            b"N",
+            b"w15.",
+            b"C5",
+            b"s0.",
+            b"F2.",
+            b"f1.",
+        ] {
+            raw.extend_from_slice(&[0x87, 0x53]);
+            raw.extend_from_slice(control);
+        }
+        raw.extend_from_slice(b"Text");
+        raw.extend_from_slice(&[0x81, 0xa5, 0x84, 0xa0]);
+
+        assert_eq!(decode_display_text(&raw), "'\"\nText");
     }
 
     #[test]

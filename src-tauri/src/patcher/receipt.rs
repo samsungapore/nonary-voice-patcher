@@ -20,6 +20,7 @@ pub const SIGNATURE_SIZE: u64 = 0x88;
 pub enum PatchedLanguage {
     Japanese,
     English,
+    French,
 }
 
 impl PatchedLanguage {
@@ -27,6 +28,7 @@ impl PatchedLanguage {
         match self {
             Self::Japanese => *b"jp\0\0",
             Self::English => *b"en\0\0",
+            Self::French => *b"fr\0\0",
         }
     }
 
@@ -34,6 +36,7 @@ impl PatchedLanguage {
         match data {
             b"jp\0\0" => Ok(Self::Japanese),
             b"en\0\0" => Ok(Self::English),
+            b"fr\0\0" => Ok(Self::French),
             _ => Err(ReceiptError::Invalid("unknown language".to_owned())),
         }
     }
@@ -274,13 +277,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn receipt_round_trips_all_supported_languages() {
+        let mut base = vec![0xff; 0x3000];
+        base[0x0c..0x10].copy_from_slice(b"BSKE");
+        for language in [
+            PatchedLanguage::Japanese,
+            PatchedLanguage::English,
+            PatchedLanguage::French,
+        ] {
+            let receipt = Receipt::new(&base, language).unwrap();
+            assert_eq!(Receipt::from_bytes(&receipt.to_bytes()).unwrap(), receipt);
+        }
+
+        let mut unknown = Receipt::new(&base, PatchedLanguage::French)
+            .unwrap()
+            .to_bytes();
+        unknown[572..576].copy_from_slice(b"de\0\0");
+        assert!(matches!(
+            Receipt::from_bytes(&unknown),
+            Err(ReceiptError::Invalid(message)) if message == "unknown language"
+        ));
+    }
+
+    #[test]
     fn footer_is_located_and_base_is_restored_exactly() {
         let mut base = vec![0xff; 0x3000];
         base[..12].copy_from_slice(b"999HRPERDOOR");
         base[0x0c..0x10].copy_from_slice(b"BSKE");
         base[0x80..0x84].copy_from_slice(&0x2000_u32.to_le_bytes());
         base[0x1000..0x1004].copy_from_slice(&0x1234_u32.to_le_bytes());
-        let receipt = Receipt::new(&base, PatchedLanguage::Japanese).unwrap();
+        let receipt = Receipt::new(&base, PatchedLanguage::French).unwrap();
         let mut patched = base.clone();
         patched[0x14] = 12;
         patched[0x1000..0x1004].copy_from_slice(&0xdeadbeef_u32.to_le_bytes());
@@ -297,6 +323,7 @@ mod tests {
         file.flush().unwrap();
         let located = locate(file.path()).unwrap();
         assert_eq!(located.signature_offset, u64::from(signature_offset));
+        assert_eq!(located.receipt.language, PatchedLanguage::French);
         let (restored, _) = restore_base(file.path()).unwrap();
         assert_eq!(restored, base);
     }

@@ -2,10 +2,13 @@
 
 Nonary Voice Patcher adds the Japanese or English dialogue voices from
 *Zero Escape: The Nonary Games* to the US Nintendo DS release of
-*999: Nine Hours, Nine Persons, Nine Doors*.
+*999: Nine Hours, Nine Persons, Nine Doors*. It also includes a French Dubbing
+Studio for recording an original performance and building test ROMs with the
+same injection pipeline.
 
-The project contains a Tauri desktop application, a headless Rust CLI, the ROM
-patching engine, and the research scripts used to derive the voice mapping.
+The project contains a Tauri desktop application, native recording and French
+preview tools, a headless Rust CLI, the ROM patching engine, and the research
+scripts used to derive the voice mapping.
 The current profile injects 6,414 voiced dialogue targets across 51 scripts.
 Narration is excluded unless the DS script names the same speaking character,
 which prevents Junpei's remake narration from playing over bottom-screen prose.
@@ -31,11 +34,25 @@ preventing voice calls from drifting when control flow has changed.
 ## What is not included
 
 This repository does not distribute a ROM, save data, the PC game archive,
-extracted voices, or generated voice packs. The production
-`voices-jp.nvpack` and `voices-en.nvpack` files are generated outside the
-repository from privately owned game inputs. The reviewed alignment decisions
-needed to reproduce them are tracked under `research/reviews/`. See
-[NOTICE.md](NOTICE.md).
+extracted voices, Dubbing Studio recordings, or generated voice packs. The
+production `voices-jp.nvpack` and `voices-en.nvpack` files are generated
+outside the repository from privately owned game inputs. The reviewed
+alignment decisions needed to reproduce them are tracked under
+`research/reviews/`. See [NOTICE.md](NOTICE.md).
+
+## French Dubbing Studio
+
+The desktop Studio derives 6,414 dialogue-only recording cues from a compatible
+ROM. Each cue shows up to two neighboring lines on either side without crossing
+the current script function. Projects keep only statuses, notes, immutable WAV
+takes, hashes, and processing metadata; dialogue and context are decoded from
+the selected ROM and are not copied into the manifest.
+
+The native preview builder uses active takes, inserts 80 ms silence for missing
+cues, writes `builds/voices-fr-preview.nvpack`, and immediately creates a
+reversible test ROM. Python tooling provides equivalent preview export and a
+strict production mode that requires all 6,414 cues to be approved. See the
+[complete Dubbing Studio guide](docs/DUBBING_STUDIO.md).
 
 ## Required runtime files
 
@@ -93,10 +110,12 @@ guide.
 | Inspect a ROM | `voice-profile.json` |
 | Apply Japanese voices | `voice-profile.json` and `voices-jp.nvpack` |
 | Apply English voices | `voice-profile.json` and `voices-en.nvpack` |
+| Apply a French Studio pack with the CLI | `voice-profile.json` and an explicit catalogue-bound French `.nvpack` |
 | Reset a ROM patched by this tool | No runtime resources |
 
 Install both packs for the complete desktop experience because the GUI exposes
-both voice-language choices.
+both remake voice-language choices. They are not required to record a French
+project or build its preview ROM.
 
 ## Desktop GUI setup
 
@@ -120,7 +139,9 @@ npm run tauri dev
 ```
 
 `npm run tauri build` copies that directory into the application bundle. The
-packs must therefore be present before the build begins.
+packs must therefore be present before the build begins if the resulting app
+must apply Japanese or English voices. The French Studio uses the public
+profile, the selected ROM, and project recordings instead.
 
 ### Using an installed or unpacked GUI
 
@@ -289,8 +310,9 @@ Tests that require private ROM or audio fixtures are marked as ignored.
 ### Prepare runtime resources
 
 Cargo compiles only the program; it does not create or embed voice packs.
-`apply` requires a generated `voices-jp.nvpack` or `voices-en.nvpack`. The
-tracked 6,414-target runtime alignment makes both packs reproducible when
+Japanese and English `apply` operations require `voices-jp.nvpack` or
+`voices-en.nvpack`; French requires an explicit NVPACK v2. The tracked
+6,414-target runtime alignment makes the remake packs reproducible when
 combined with the private game inputs listed in
 [docs/HACK_PROCESS.md](docs/HACK_PROCESS.md).
 
@@ -346,6 +368,7 @@ The resource requirements are:
 | `inspect` | `voice-profile.json` |
 | `apply --language jp` | `voice-profile.json` and `voices-jp.nvpack` |
 | `apply --language en` | `voice-profile.json` and `voices-en.nvpack` |
+| `apply --language fr --voice-pack <FILE>` | `voice-profile.json` and the explicit French NVPACK v2 file |
 | `reset` | None |
 
 Private packs and ROMs are not repository content. `.gitignore` excludes the
@@ -358,7 +381,7 @@ nonary-voice-patcher-cli [OPTIONS] <COMMAND>
 
 Commands:
   inspect <INPUT_ROM>
-  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en>
+  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en|fr> [--voice-pack <FILE>]
   reset <PATCHED_ROM> <OUTPUT_ROM>
   help [COMMAND]
 
@@ -370,8 +393,10 @@ Options:
 ```
 
 Global options may appear before or after a subcommand. `--language` is
-required by `apply` and accepts only `jp` or `en`. Quote every path that can
-contain spaces. There is no `--force` or `--quiet` option.
+required by `apply` and accepts `jp`, `en`, or `fr`. French additionally
+requires `--voice-pack <FILE>`; Japanese and English use their standard pack
+inside the resource directory. Quote every path that can contain spaces. There
+is no `--force` or `--quiet` option.
 
 ### Inspect a ROM
 
@@ -399,13 +424,14 @@ compatibility, and an explanatory detail. Interpret the state as follows:
 | `clean` | Continue only when `Compatible: yes`. |
 | `japanese` | The ROM already has this tool's Japanese patch; reset it, or switch languages with `apply` only when `Compatible: yes`. |
 | `english` | The ROM already has this tool's English patch; reset it, or switch languages with `apply` only when `Compatible: yes`. |
+| `french` | The ROM already has this tool's French voice patch; reset it, or switch languages with `apply` only when `Compatible: yes`. |
 | `legacy_voice_patch` | The ROM has an older non-reversible patch; return to a clean or pre-voice ROM. |
 | `unsupported` | Stop and use a supported ROM; see [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). |
 
 `inspect` can exit with code `0` while reporting `Compatible: no`. Scripts must
 check the reported compatibility rather than using the process exit code alone.
 
-### Apply Japanese or English voices
+### Apply voices
 
 The commands below create new output ROMs:
 
@@ -433,16 +459,36 @@ PowerShell:
   apply "C:\roms\source.nds" "C:\roms\999-voiced-en.nds" --language en
 ```
 
+Apply a French Studio pack by passing its path explicitly:
+
+```sh
+./portable-patcher/nonary-voice-patcher-cli \
+  --resources-dir "/absolute/path/to/portable-patcher/resources" \
+  apply "/absolute/path/to/source.nds" \
+  "/absolute/path/to/999-voiced-fr.nds" \
+  --language fr \
+  --voice-pack "/absolute/path/to/voices-fr-production.nvpack"
+```
+
+```powershell
+& .\portable-patcher\nonary-voice-patcher-cli.exe `
+  --resources-dir "C:\absolute\path\to\portable-patcher\resources" `
+  apply "C:\roms\source.nds" "C:\roms\999-voiced-fr.nds" `
+  --language fr --voice-pack "C:\path\to\voices-fr-production.nvpack"
+```
+
+French packs must be version 2 and carry the catalogue digest of the selected
+`voice-profile.json`. The CLI rejects v1 French packs and catalogue mismatches.
+
 The input and output must resolve to different paths, including through
 symbolic links. Missing output directories are created. The input is not
 modified: the engine writes a temporary file and publishes the output only
 after verification. A distinct existing output file can be replaced, so use a
 new output filename when retaining an earlier result matters.
 
-Applying Japanese voices to an English-patched ROM, or the reverse, first
-restores the base recorded in the patch receipt and then applies the selected
-language. Voice patches therefore do not stack. A legacy patch without a valid
-receipt is rejected.
+Switching among Japanese, English, and French first restores the base recorded
+in the patch receipt and then applies the selected language. Voice patches
+therefore do not stack. A legacy patch without a valid receipt is rejected.
 
 For the reviewed French translation, the supported order is:
 
@@ -454,8 +500,8 @@ Applying the voice patch before the French translation is unsupported.
 
 ### Verify and use the output
 
-Inspect the newly created ROM and require the expected `japanese` or `english`
-state:
+Inspect the newly created ROM and require the expected `japanese`, `english`,
+or `french` state:
 
 ```sh
 ./portable-patcher/nonary-voice-patcher-cli \
@@ -546,8 +592,9 @@ The machine-readable contract is:
   `schemaVersion: 1`;
 - successful inspection also requires `result.compatible: true` before
   patching;
-- `--language` accepts `jp` or `en`, while an apply result reports
-  `"language":"japanese"` or `"language":"english"`;
+- `--language` accepts `jp`, `en`, or `fr`, while an apply result reports
+  `"language":"japanese"`, `"language":"english"`, or
+  `"language":"french"`;
 - reset reports `"language":null`, zero voices and scripts, and
   `"resetExact":true`.
 
@@ -575,7 +622,8 @@ authoritative; a progress event never proves completion. See
 | `cargo: command not found` | Open a new terminal after installing Rust, then rerun `cargo --version`. |
 | Linker or C compiler failure | Install the native build tools listed under CLI-only prerequisites. |
 | Resource directory/profile not found | Pass an absolute `--resources-dir` containing `voice-profile.json`. |
-| Selected voice pack not found | Put the exact `voices-jp.nvpack` or `voices-en.nvpack` filename beside the profile. |
+| Selected JP/EN voice pack not found | Put the exact `voices-jp.nvpack` or `voices-en.nvpack` filename beside the profile. |
+| French voice pack required or rejected | Pass `--voice-pack <FILE>` and use a v2 pack generated for the same `voice-profile.json` catalogue. |
 | `Compatible: no` or `unsupported` | Stop and check [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). |
 | `legacy_voice_patch` | Return to a clean or pre-voice ROM; a legacy patch cannot be reset safely. |
 | Input and output are the same | Choose a distinct output filename and avoid aliases or symlinks to the input. |
@@ -604,15 +652,16 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-Run the desktop application with `npm run tauri dev`. Building a functional
-application bundle additionally requires the two private voice packs in
-`src-tauri/resources/`. See [docs/BUILDING.md](docs/BUILDING.md).
+Run the desktop application with `npm run tauri dev`. A bundle that applies
+Japanese or English voices additionally requires the corresponding private
+packs in `src-tauri/resources/`; the French Studio does not. See
+[docs/BUILDING.md](docs/BUILDING.md).
 
 ## Repository map
 
 ```text
-src/                    React desktop interface
-src-tauri/src/          Rust engine, Tauri commands, and CLI
+src/                    React patcher and Dubbing Studio interface
+src-tauri/src/          Rust engine, recording/build modules, Tauri commands, and CLI
 src-tauri/resources/    Public profile plus private local voice packs
 scripts/                Reproducible research and build utilities
 research/alignment/     Text-free production map used to build voice packs
@@ -628,6 +677,7 @@ docs/                   Technical and operational documentation
 - [Dialogue alignment and the rejected candidates](docs/ALIGNMENT.md)
 - [Runtime architecture and safety invariants](docs/ARCHITECTURE.md)
 - [CLI reference and JSON contract](docs/CLI.md)
+- [French Dubbing Studio](docs/DUBBING_STUDIO.md)
 - [Binary formats](docs/FORMATS.md)
 - [ROM and translation compatibility](docs/COMPATIBILITY.md)
 - [Building from source](docs/BUILDING.md)

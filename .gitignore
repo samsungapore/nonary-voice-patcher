@@ -26,6 +26,9 @@ validation/
 *.nds
 *.sav
 *.nvpack
+*.nvdub.json
+*.nvdub.lock
+*.wav
 *.zip
 ze1_data.bin
 src-tauri/resources/voices-*.nvpack
@@ -33,6 +36,7 @@ original/
 output/
 work/
 build/
+builds/
 backup/
 translations/
 Patcheur_auto_999_DS/

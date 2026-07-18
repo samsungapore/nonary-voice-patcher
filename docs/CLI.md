@@ -25,7 +25,7 @@ nonary-voice-patcher-cli [--json] [--resources-dir DIR] <COMMAND>
 
 Commands:
   inspect <INPUT_ROM>
-  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en>
+  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en|fr> [--voice-pack FILE]
   reset <PATCHED_ROM> <OUTPUT_ROM>
 ```
 
@@ -39,6 +39,7 @@ compatibility checks, and reports one of these states:
 - `clean`
 - `japanese`
 - `english`
+- `french`
 - `legacy_voice_patch`
 - `unsupported`
 
@@ -52,10 +53,10 @@ nonary-voice-patcher-cli \
 
 ### `apply`
 
-Creates a new Japanese- or English-voiced ROM. If the input contains a valid
-receipt from this patcher, the engine first restores its base; applying `en` to
-a JP-patched ROM therefore switches the voice language without stacking two
-patches.
+Creates a new Japanese-, English-, or French-voiced ROM. If the input contains
+a valid receipt from this patcher, the engine first restores its base; applying
+`en` to a JP-patched ROM therefore switches the voice language without stacking
+two patches.
 
 ```sh
 nonary-voice-patcher-cli --resources-dir ./resources \
@@ -63,9 +64,16 @@ nonary-voice-patcher-cli --resources-dir ./resources \
 
 nonary-voice-patcher-cli --resources-dir ./resources \
   apply source.nds output.nds --language en
+
+nonary-voice-patcher-cli --resources-dir ./resources \
+  apply source.nds output.nds --language fr \
+  --voice-pack ./studio-export/voices-fr.nvpack
 ```
 
-`apply` needs the profile and only the pack selected by `--language`.
+`apply` needs the profile and a matching pack. Japanese and English use the
+pack selected from the resource directory. French studio exports are not
+bundled resources, so `--voice-pack FILE` is required for `--language fr`.
+The pack's embedded language code is checked before any output is written.
 
 ### `reset`
 

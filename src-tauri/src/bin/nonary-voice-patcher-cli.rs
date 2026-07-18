@@ -29,7 +29,7 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
-    /// Directory containing voice-profile.json and the voice packs.
+    /// Directory containing voice-profile.json and the bundled voice packs.
     #[arg(long, global = true, value_name = "DIR")]
     resources_dir: Option<PathBuf>,
 
@@ -52,6 +52,9 @@ enum Command {
         output: PathBuf,
         #[arg(long, value_enum)]
         language: LanguageArg,
+        /// Explicit voice pack. Required for French studio exports.
+        #[arg(long, value_name = "FILE", required_if_eq("language", "fr"))]
+        voice_pack: Option<PathBuf>,
     },
     /// Restore the exact source ROM from a reversible patch.
     Reset {
@@ -68,6 +71,8 @@ enum LanguageArg {
     Japanese,
     #[value(name = "en")]
     English,
+    #[value(name = "fr")]
+    French,
 }
 
 impl From<LanguageArg> for PatchLanguage {
@@ -75,6 +80,7 @@ impl From<LanguageArg> for PatchLanguage {
         match value {
             LanguageArg::Japanese => Self::Japanese,
             LanguageArg::English => Self::English,
+            LanguageArg::French => Self::French,
         }
     }
 }
@@ -138,8 +144,11 @@ impl From<EngineError> for CliError {
             EngineError::VoicePack(_)
             | EngineError::Profile(_)
             | EngineError::VoicePackLanguage { .. }
+            | EngineError::VoicePackCatalog(_)
+            | EngineError::FrenchVoicePackRequired
             | EngineError::PayloadSize { .. } => CliErrorCode::Resource,
             EngineError::SameInputOutput
+            | EngineError::ProtectedOutput { .. }
             | EngineError::Nds(_)
             | EngineError::Receipt(_)
             | EngineError::RomTooLarge
@@ -273,6 +282,7 @@ fn execute(cli: Cli) -> Result<Outcome, (&'static str, CliError)> {
             input,
             output,
             language,
+            voice_pack,
         } => {
             let command = "apply";
             let output = normalize_output_path(output);
@@ -283,7 +293,13 @@ fn execute(cli: Cli) -> Result<Outcome, (&'static str, CliError)> {
                 ResourceNeed::Apply { language },
             )
             .map_err(|error| (command, error))?;
-            let options = ApplyOptions { language };
+            if let Some(path) = voice_pack.as_deref() {
+                require_resource(path, "voice pack").map_err(|error| (command, error))?;
+            }
+            let options = ApplyOptions {
+                language,
+                voicepack_override: voice_pack,
+            };
             let result = engine::apply_patch(input, output, &resources, &options, |progress| {
                 print_progress(json, command, &progress)
             })
@@ -348,6 +364,9 @@ fn resolve_resources(
         } => {
             require_resource(&english_voicepack, "English voice pack")?;
         }
+        ResourceNeed::Apply {
+            language: PatchLanguage::French,
+        } => {}
     }
 
     Ok(ResourcePaths {
@@ -544,6 +563,7 @@ fn rom_state_code(state: RomPatchState) -> &'static str {
         RomPatchState::Clean => "clean",
         RomPatchState::Japanese => "japanese",
         RomPatchState::English => "english",
+        RomPatchState::French => "french",
         RomPatchState::LegacyVoicePatch => "legacy_voice_patch",
         RomPatchState::Unsupported => "unsupported",
     }
@@ -589,8 +609,29 @@ mod tests {
             apply.command,
             Command::Apply {
                 language: LanguageArg::Japanese,
+                voice_pack: None,
                 ..
             }
+        ));
+
+        let french = Cli::try_parse_from([
+            "cli",
+            "apply",
+            "in.nds",
+            "out.nds",
+            "--language",
+            "fr",
+            "--voice-pack",
+            "voices-fr.nvpack",
+        ])
+        .unwrap();
+        assert!(matches!(
+            french.command,
+            Command::Apply {
+                language: LanguageArg::French,
+                voice_pack: Some(path),
+                ..
+            } if path == Path::new("voices-fr.nvpack")
         ));
 
         let reset = Cli::try_parse_from(["cli", "reset", "patched.nds", "clean.nds"]).unwrap();
@@ -598,9 +639,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_languages() {
+    fn french_requires_a_voice_pack_and_unknown_languages_are_rejected() {
         assert!(
             Cli::try_parse_from(["cli", "apply", "in.nds", "out.nds", "--language", "fr"]).is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["cli", "apply", "in.nds", "out.nds", "--language", "de"]).is_err()
         );
     }
 
@@ -624,6 +668,13 @@ mod tests {
             }
         )
         .is_err());
+        assert!(resolve_resources(
+            Some(temporary.path()),
+            ResourceNeed::Apply {
+                language: PatchLanguage::French,
+            }
+        )
+        .is_ok());
     }
 
     #[test]

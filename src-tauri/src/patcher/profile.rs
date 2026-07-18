@@ -89,6 +89,33 @@ impl VoiceProfile {
         Ok(serde_json::to_vec_pretty(self)?)
     }
 
+    pub fn catalog_sha256(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        // Length-prefixing every field keeps the identity unambiguous even if
+        // future profiles admit characters that would collide with a textual
+        // delimiter. Fixed-width little-endian integers also make the digest
+        // independent of the host architecture.
+        hasher.update(b"NVPACK-CATALOG-V1\0");
+        hasher.update((self.voice_count as u64).to_le_bytes());
+        for script in &self.scripts {
+            for voice in &script.voices {
+                hasher.update((voice.symbol.len() as u64).to_le_bytes());
+                hasher.update(voice.symbol.as_bytes());
+                hasher.update((script.path.len() as u64).to_le_bytes());
+                hasher.update(script.path.as_bytes());
+                hasher.update((voice.ordinal as u64).to_le_bytes());
+            }
+        }
+        hasher.finalize().into()
+    }
+
+    pub fn catalog_sha256_hex(&self) -> String {
+        self.catalog_sha256()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
     pub fn validate(&self) -> Result<(), ProfileError> {
         if self.version != PROFILE_VERSION {
             return Err(ProfileError::Invalid(format!(
@@ -437,6 +464,43 @@ mod tests {
 
     fn root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[test]
+    fn catalogue_digest_has_a_cross_platform_canonical_encoding() {
+        let profile = VoiceProfile {
+            version: 1,
+            game_code: "BSKE".to_owned(),
+            voice_count: 2,
+            scripts: vec![
+                ScriptProfile {
+                    path: "scr/a.fsb".to_owned(),
+                    structural_sha256: "00".repeat(32),
+                    alternative_structural_sha256: Vec::new(),
+                    set_text_count: 4,
+                    voices: vec![ProfileVoice {
+                        ordinal: 3,
+                        symbol: "SE_V0000".to_owned(),
+                    }],
+                },
+                ScriptProfile {
+                    path: "scr/b.fsb".to_owned(),
+                    structural_sha256: "11".repeat(32),
+                    alternative_structural_sha256: Vec::new(),
+                    set_text_count: 10,
+                    voices: vec![ProfileVoice {
+                        ordinal: 9,
+                        symbol: "SE_V0001".to_owned(),
+                    }],
+                },
+            ],
+            exact_repairs: Vec::new(),
+        };
+        profile.validate().unwrap();
+        assert_eq!(
+            profile.catalog_sha256_hex(),
+            "c602d805fa381873854a285472714d52a27075166e36be835a9426f33820fb63"
+        );
     }
 
     #[test]
