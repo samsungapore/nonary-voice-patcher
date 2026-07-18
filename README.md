@@ -506,12 +506,10 @@ Without the option, the CLI selects the first directory containing
 6. `$APPDIR/usr/lib/nonary-voice-patcher/resources` in a Linux AppImage;
 7. `/usr/lib/nonary-voice-patcher/resources` on Linux;
 8. `<executable-dir>/../share/nonary-voice-patcher/resources`;
-9. the absolute development `src-tauri/resources` path recorded when the
-   binary was compiled.
+9. debug builds only: the development `src-tauri/resources` directory.
 
-The compile-time development path is not portable. Discovery stops at the first
-directory containing a profile; a missing language pack in that directory
-produces a resource error.
+Discovery stops at the first directory containing a profile; a missing language
+pack in that directory produces a resource error.
 
 The environment variable can be used for an interactive shell:
 

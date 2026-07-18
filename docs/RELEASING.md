@@ -55,8 +55,24 @@ git archive --format=tar.gz \
 Headless CLI:
 
 ```sh
-cargo build --manifest-path src-tauri/Cargo.toml --release \
+RUSTFLAGS="--remap-path-prefix=$HOME=/workspace" \
+  cargo build --manifest-path src-tauri/Cargo.toml --release --locked \
   --no-default-features --features cli --bin nonary-voice-patcher-cli
+```
+
+The path remap keeps builder-specific home and Cargo registry paths out of the
+published executable. For a portable native Windows build, statically link the
+MSVC runtime as well:
+
+```powershell
+$env:RUSTFLAGS = "-C target-feature=+crt-static --remap-path-prefix=$HOME=C:\workspace"
+cargo build `
+  --manifest-path .\src-tauri\Cargo.toml `
+  --release --locked `
+  --no-default-features `
+  --features cli `
+  --bin nonary-voice-patcher-cli
+Remove-Item Env:RUSTFLAGS
 ```
 
 Desktop bundles, when their resource distribution is authorized:

@@ -382,6 +382,9 @@ fn default_resource_candidates() -> Result<Vec<PathBuf>, CliError> {
         append_linux_resource_candidates(&mut candidates, app_dir.as_deref());
     }
     candidates.push(executable_dir.join("../share/nonary-voice-patcher/resources"));
+    // The source-tree fallback keeps local development convenient without
+    // exposing a builder-specific absolute path in distributable binaries.
+    #[cfg(debug_assertions)]
     candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
     candidates.dedup();
     Ok(candidates)
