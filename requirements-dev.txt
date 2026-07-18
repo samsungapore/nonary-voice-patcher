@@ -1,0 +1,7 @@
+ndspy>=2.0.0
+numpy>=2.0
+Pillow>=10.0
+scikit-learn>=1.5
+scipy>=1.13
+soundfile>=0.12
+soxr>=0.5

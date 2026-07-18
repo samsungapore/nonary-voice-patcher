@@ -1,0 +1,11 @@
+cffi==2.0.0
+joblib==1.5.3
+ndspy==4.2.0
+numpy==2.0.2
+Pillow==11.3.0
+pycparser==2.23
+scikit-learn==1.6.1
+scipy==1.13.1
+soundfile==0.13.1
+soxr==1.1.0
+threadpoolctl==3.6.0

@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Vite and its React plugin enforce matching major peer ranges, so review them as one unit.
+    groups:
+      vite-toolchain:
+        patterns:
+          - vite
+          - "@vitejs/plugin-react"
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Major-version action tags keep CI readable, while Dependabot surfaces the
+  # exact upstream changes for review instead of leaving workflow drift silent.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

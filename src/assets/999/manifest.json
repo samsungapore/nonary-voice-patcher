@@ -1,0 +1,53 @@
+{
+  "sourceRom": "Nine Hours, Nine Persons, Nine Doors (USA).nds",
+  "sourceRomSha256": "05843a3ee682bc388299ce35b9347d9d1bdda4d3890fcffbde6de785a5de5e15",
+  "images": {
+    "logo.png": {
+      "nitroPath": "bg/minigame/start/resource/bg_main.dat",
+      "sourceSha256": "df2c3f0c881945e3b33d321f1996070ea81912c0f9e9580ef167492684db78ba",
+      "sha256": "ef8af9910852b27fb477297157b3cf24df61854d631eaf5395dba7ab6140b07c",
+      "width": 256,
+      "height": 192
+    },
+    "start-sub.png": {
+      "nitroPath": "bg/minigame/start/resource/bg_sub.dat",
+      "sourceSha256": "e046593c06ba95ec1b68406c0bb1810e049673ef001552f4bcbe7ff0ac5214c4",
+      "sha256": "c7bd690d5eb6deae31359bed38b9e1dc49db3f0d85a5599a4dc4501d55a9798f",
+      "width": 256,
+      "height": 192
+    },
+    "flooded-corridor.png": {
+      "nitroPath": "bg/novel/passaged_000_00.dat",
+      "sourceSha256": "4c48a6f06a133e2f9cf0bacd1b035dae3cc3f3933884e482ac53f0abee8857ce",
+      "sha256": "8adad8f109689d1ad7209d693e171ffd7127373764988131a7623a3d8af9323f",
+      "width": 256,
+      "height": 384
+    },
+    "numbered-door.png": {
+      "nitroPath": "bg/novel/zero_010_00.dat",
+      "sourceSha256": "47d108918ac4b2d3ba1bfdb5b51626aed57d4abd813947571313da1b66c16493",
+      "sha256": "c86701261a820772fa39e4f0ebb9e4529dad4e8a20f9464be0f69f1c23f89042",
+      "width": 256,
+      "height": 192
+    },
+    "zero-robot.png": {
+      "source": "User-provided reference image",
+      "sha256": "63b2269972c47d2d870b66620e32b2fbf55d72729e3858b049c502573c19bf53",
+      "width": 295,
+      "height": 328
+    }
+  },
+  "appIcon": {
+    "derivedFrom": "bg/minigame/start/resource/bg_main.dat",
+    "sha256": "e39e6a81c2147f396349ff10de5e1bf82f1f94c1d9168a55ee72e79da2c0de5a",
+    "width": 1024,
+    "height": 1024
+  },
+  "music": {
+    "nitroPath": "sound/m19_bgm_e_13.sad",
+    "sourceSha256": "0d967efd1b0f401844cb078fb0c8a8b06263d5d15bee89d515cc1c18eec11a6e",
+    "sha256": "b09ed3d79ffd4e3145f0cfc01044b610499a36209778ed5f8808947735dd8562",
+    "bytes": 1379637,
+    "loopStartSeconds": 32.025
+  }
+}

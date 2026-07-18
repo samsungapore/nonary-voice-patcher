@@ -1,0 +1,69 @@
+[package]
+name = "nonary-voice-patcher"
+version = "0.1.0"
+description = "Reversible Japanese and English voice patcher for 999 on Nintendo DS"
+authors = ["Kazuhiro"]
+edition = "2021"
+license = "MIT"
+default-run = "nonary-voice-patcher"
+autobins = false
+
+[features]
+default = ["gui"]
+gui = [
+    "dep:tauri",
+    "dep:tauri-build",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-opener",
+]
+dev-tools = []
+cli = []
+
+[lib]
+# A distinct library name prevents Cargo's Windows target naming from colliding
+# with the GUI binary while keeping the public package name unchanged.
+name = "nonary_voice_patcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "nonary-voice-patcher"
+path = "src/main.rs"
+required-features = ["gui"]
+
+[[bin]]
+name = "nonary-voice-patcher-cli"
+path = "src/bin/nonary-voice-patcher-cli.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "audit_voice_patch_preservation"
+path = "src/bin/audit_voice_patch_preservation.rs"
+required-features = ["dev-tools"]
+
+[[bin]]
+name = "audit_voice_profile"
+path = "src/bin/audit_voice_profile.rs"
+required-features = ["dev-tools"]
+
+[[bin]]
+name = "build_voice_profile"
+path = "src/bin/build_voice_profile.rs"
+required-features = ["dev-tools"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-dialog = { version = "2", optional = true }
+sha2 = "0.11.0"
+thiserror = "2.0.18"
+zstd = "0.13.3"
+tempfile = "3.27.0"
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"

@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "game_code": "BSKE",
+  "alternative_scripts": [
+    {
+      "path": "scr/a01b.fsb",
+      "alternative_structural_sha256": [
+        "6a991e64596c61c6299c07356b45384819af19c137b51bebe6f481cd084ac61c"
+      ]
+    },
+    {
+      "path": "scr/a11d.fsb",
+      "alternative_structural_sha256": [
+        "2c46270436c9f9aeaeba454e5d48ed0b49da2811ae8517f91ae460272c5fffbe"
+      ]
+    },
+    {
+      "path": "scr/a12d.fsb",
+      "alternative_structural_sha256": [
+        "351c4a00c8a23adabe887def45f2ebba91ff51f348c15d7cfe3a6501d0f1447f"
+      ]
+    },
+    {
+      "path": "scr/a21b.fsb",
+      "alternative_structural_sha256": [
+        "79f06c6da4df6bac0fbed4b6de75f511db55765601c93681f9bb19355d01667e"
+      ]
+    },
+    {
+      "path": "scr/a21d.fsb",
+      "alternative_structural_sha256": [
+        "77b6aa22d2f188bf5c17ea103d0b17aba987486c564ae4962eb46d33e2e7c0ca"
+      ]
+    },
+    {
+      "path": "scr/a31d.fsb",
+      "alternative_structural_sha256": [
+        "b3200a270f6dd44676676b37b6e290fd0f907693a204e5c4791021b52ed2b13f"
+      ]
+    },
+    {
+      "path": "scr/a32d.fsb",
+      "alternative_structural_sha256": [
+        "285793619ef9ce6f961522fe30429f4203b2b593c602fb3b7736261b2a9cefe6"
+      ]
+    },
+    {
+      "path": "scr/a41d.fsb",
+      "alternative_structural_sha256": [
+        "1f54337598b0babdeb0b73a7530fd5ca5c8e63d6c95a5a97c36ed0d48176f530"
+      ]
+    },
+    {
+      "path": "scr/b21b.fsb",
+      "alternative_structural_sha256": [
+        "17a34bacbbcb6cd16b068b907f84039379cdccda57ae1ab31d28d2be11800b48"
+      ]
+    },
+    {
+      "path": "scr/b21d.fsb",
+      "alternative_structural_sha256": [
+        "448757833585fc75071f5686f10fa804ced043522d223dc177f2c0c05fe3b4a4"
+      ]
+    },
+    {
+      "path": "scr/b31d.fsb",
+      "alternative_structural_sha256": [
+        "6ed1e993ce6952bc102b36aa164a147b5c23b5a72f08b18e7b35e175672fcdce"
+      ]
+    },
+    {
+      "path": "scr/b32b.fsb",
+      "alternative_structural_sha256": [
+        "60acdff1ddc2a0f48a7e6e377b78f667027b7f610f23d5d7df0dca0167cb234f"
+      ]
+    },
+    {
+      "path": "scr/b32d.fsb",
+      "alternative_structural_sha256": [
+        "225a5760f8d86d6a0f64cf1bb6480b485baa7214af20f505adbddf2b761e2c10"
+      ]
+    },
+    {
+      "path": "scr/bed2.fsb",
+      "alternative_structural_sha256": [
+        "415b17e06f71c61075cd75e6af7e80f945e3968da24e34c2e9b21f58e30c4a69"
+      ]
+    },
+    {
+      "path": "scr/bed4.fsb",
+      "alternative_structural_sha256": [
+        "63ad683c71f8f9ca2690806b447aba356406820c4a761c1e3eeb735251c17176"
+      ]
+    },
+    {
+      "path": "scr/c31b.fsb",
+      "alternative_structural_sha256": [
+        "9bedd79f38c7f40d8dd208d42c09f815844154ab6dd6cfc3450eaa0b464cccb5"
+      ]
+    },
+    {
+      "path": "scr/ced1.fsb",
+      "alternative_structural_sha256": [
+        "deb4220452d158a9d16ec4baec7369d79955b5af21015205db33bf56f9da3c7b"
+      ]
+    },
+    {
+      "path": "scr/m10a.fsb",
+      "alternative_structural_sha256": [
+        "ff94ca9bd14260362ccf08104ba72315835b8d882fd7a1cbc0049d2c67bedbf6"
+      ]
+    },
+    {
+      "path": "scr/m20a.fsb",
+      "alternative_structural_sha256": [
+        "5396d60d3add893a2f316547cfe3f8d43e662dc351935a25b1b2bc88cb7aaeac"
+      ]
+    },
+    {
+      "path": "scr/m30a.fsb",
+      "alternative_structural_sha256": [
+        "a87a6b9509d52d0f0966f7c477fa7ea67a78dfe1bf32eac71daed02c8d0dd345"
+      ]
+    },
+    {
+      "path": "scr/m40a.fsb",
+      "alternative_structural_sha256": [
+        "3013fbeae9416076954b8385bf44e2533011182fb1333c9f11b5567fd597d3b8"
+      ]
+    }
+  ],
+  "exact_repairs": [
+    {
+      "path": "scr/a31.fsb",
+      "damaged_sha256": "2dbee0384043211a2cf6a3b454367e9f54ed2eccc267250ff1109ffcd700ff2f",
+      "repaired_sha256": "99ff47170de5df553871fc02a6591fd44b3f1d5932feb0800d92f694d92379fa",
+      "accepted_clean_sha256": [
+        "99ff47170de5df553871fc02a6591fd44b3f1d5932feb0800d92f694d92379fa",
+        "ed7c1f10162192e5aabbe906ee0b4c7aeef7c71733bbde059ddb58f66dbd51bb"
+      ],
+      "edits": [
+        {
+          "offset": 40792,
+          "expected_hex": "84ca",
+          "replacement_hex": "7e45"
+        }
+      ]
+    },
+    {
+      "path": "scr/a32.fsb",
+      "damaged_sha256": "c54ef5d933e09b10801ce9e7fe7e429f0337ed04a19f9df2d0ad30c4c43df19c",
+      "repaired_sha256": "fb67a3a9721eacece9ea4d2f57ce47ece656fedc91c7a2b9db1c80e49252bfe4",
+      "accepted_clean_sha256": [
+        "d23df2af0db6c57779e21f2fc88c419910e55134524b479b0d0a5b606917fab1",
+        "fb67a3a9721eacece9ea4d2f57ce47ece656fedc91c7a2b9db1c80e49252bfe4"
+      ],
+      "edits": [
+        {
+          "offset": 40760,
+          "expected_hex": "84c9",
+          "replacement_hex": "7e44"
+        }
+      ]
+    },
+    {
+      "path": "scr/b12.fsb",
+      "damaged_sha256": "dfc17f6ac680be60e9ca32e3d23c72799f7d7f57ef7da3e16f13c434daa3daf4",
+      "repaired_sha256": "beb0c5dfe6e4e3e140aae95262c5a5f83d8e3db9597f51f392353ec806e434b0",
+      "accepted_clean_sha256": [
+        "beb0c5dfe6e4e3e140aae95262c5a5f83d8e3db9597f51f392353ec806e434b0",
+        "ee2e7112e53fafe03409e27365e7a3bd7c619cf3d22167a6c3dd5f99c1daf046"
+      ],
+      "edits": [
+        {
+          "offset": 43232,
+          "expected_hex": "84cd",
+          "replacement_hex": "7e48"
+        }
+      ]
+    },
+    {
+      "path": "scr/b21.fsb",
+      "damaged_sha256": "23cc9a14df20b15278937f2db7f4495102a5af7246da6d4e33c382313d4de5ae",
+      "repaired_sha256": "0412646dfa6605d4c8932d1b13428fdf1a8ea20d35c12b248987107c27cd3111",
+      "accepted_clean_sha256": [
+        "0412646dfa6605d4c8932d1b13428fdf1a8ea20d35c12b248987107c27cd3111",
+        "b91ce2dd9963802749f6dff2806e08a6de984cd121f4912a1c623a57508038cc"
+      ],
+      "edits": [
+        {
+          "offset": 54556,
+          "expected_hex": "84ce",
+          "replacement_hex": "7e49"
+        }
+      ]
+    },
+    {
+      "path": "scr/b31.fsb",
+      "damaged_sha256": "00ca559425d19c51f93573c837b50fc3ef198f8df4bd2dcdc68a5bfef4e8c028",
+      "repaired_sha256": "54ef4f8de843a7ab34912a7b9c7334e1f9f3808b575cb2a51ded6b3217e2302e",
+      "accepted_clean_sha256": [
+        "54ef4f8de843a7ab34912a7b9c7334e1f9f3808b575cb2a51ded6b3217e2302e",
+        "6212fe81592f21c1c604266e98e34df10e5919677cbd51a49bc05a92fae8d6c8"
+      ],
+      "edits": [
+        {
+          "offset": 60364,
+          "expected_hex": "84c2",
+          "replacement_hex": "7e33"
+        }
+      ]
+    }
+  ]
+}

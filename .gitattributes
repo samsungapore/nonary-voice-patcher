@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.mp3 binary
+*.nds binary
+*.nvpack binary
+*.sav binary
