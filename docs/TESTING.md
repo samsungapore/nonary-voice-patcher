@@ -66,13 +66,17 @@ For translated inputs, additionally assert:
 - all 14,610 `setText` payloads remain byte-identical;
 - all 17 reviewed pointer fields are repaired in the voiced output;
 - reset returns the exact pre-repair translated input hash;
-- JP, EN, and FR contain the same 6,414 targets and 51 scripts.
+- JP, EN, and FR contain the same 6,475 ordered voice slots and 51 scripts;
+- the French M10 voice is injected only for its reviewed raw-text SHA-256 and
+  is safely skipped on the stock text;
+- all reviewed split and composite targets preserve their component order and
+  language-specific cut boundaries.
 
 ## Dubbing Studio acceptance matrix
 
 | Scenario | Expected result |
 | --- | --- |
-| Create from a compatible ROM | Exactly 6,414 unique contiguous targets are indexed |
+| Create from a compatible ROM | Exactly 6,475 unique contiguous targets are indexed |
 | Inspect cue context | At most two lines before and after; no context crosses a script-function boundary |
 | Record multiple takes | Each capture becomes an immutable mono PCM16 WAV with a distinct ID and SHA-256 |
 | Select another take | The selected take becomes active and any prior approval is cleared |
@@ -82,10 +86,10 @@ For translated inputs, additionally assert:
 | Native preview output | `builds/voices-fr-preview.nvpack` is v2, no JSON sidecar is created, and the selected ROM output verifies |
 | Edit from another process during export | The edit waits until the pack and report or test ROM have been atomically published |
 | Production with any incomplete cue | Python preflight rejects before audio encoding |
-| Production with 6,414 approved cues | The Python builder creates a complete catalogue-bound v2 pack and JSON report |
+| Production with 6,475 approved cues | The Python builder creates a complete catalogue-bound v2 pack and JSON report |
 | Reset the preview ROM | Output is byte-identical to the logical source ROM |
 
-The private end-to-end fixture should also exercise a complete 6,414-entry
+The private end-to-end fixture should also exercise a complete 6,475-entry
 native preview build, reopen the generated pack, apply it, and verify exact
 receipt-based restoration. The all-silence fixture is suitable for structural
 coverage; at least one real recorded cue is still required for listening tests.

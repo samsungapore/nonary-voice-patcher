@@ -6,9 +6,13 @@ context from a compatible Nintendo DS ROM, keeps the recorded masters in a
 separate project folder, and exports a French voice pack that the patcher can
 apply to a test ROM.
 
-The voice catalogue contains 6,414 dialogue-only cues. Narration and other
+The voice catalogue contains 6,475 dialogue-only cues. Narration and other
 non-recordable text may appear as context, but they are not assigned a voice
 slot and are never turned into recording targets.
+
+One M10 cue is tied to the exact raw text used by the reviewed French
+translation. It remains part of the ordered recording catalogue, but the
+patcher skips its voice on a ROM whose text does not match that condition.
 
 ## Prerequisites
 
@@ -35,7 +39,7 @@ Run repository commands below from the repository root.
 3. Enter a project name.
 4. Select the reference ROM.
 5. Select a new, dedicated project folder.
-6. Create the project and wait for the 6,414 cues to be indexed.
+6. Create the project and wait for the 6,475 cues to be indexed.
 
 Use a dedicated folder rather than a general documents or downloads folder.
 The studio creates `project.nvdub.json` and a `recordings` tree inside the
@@ -167,7 +171,7 @@ validation to fail. Make a new take instead.
 The native desktop build path performs the preview export and applies it to a
 separate test ROM. It uses each cue's active take and leaves the project WAV
 masters unchanged. A cue without an active take receives 80 ms of silence, so
-the 6,414-entry voice bank remains contiguous and the partial project can be
+the 6,475-entry voice bank remains contiguous and the partial project can be
 tested in game. Preview builds may include active takes that are not approved.
 
 After at least one take has been recorded, select **Build test ROM**, choose a
@@ -274,7 +278,7 @@ cargo build \
 
 ## Build a production pack
 
-Production scope is deliberately strict. Every one of the 6,414 targets must
+Production scope is deliberately strict. Every one of the 6,475 targets must
 have an active take and status **Approved**. **Missing**, **Recorded**, **Needs
 review**, and **Skipped** all block the build; production never substitutes
 silence. Invalid trims, unsafe audio dimensions, changed WAV hashes, stale
@@ -343,7 +347,7 @@ record a new take in the studio. Do not update the manifest hash by hand.
 ### Production reports missing or unapproved targets
 
 Filter the studio by **Missing**, **Recorded**, **Needs review**, and
-**Skipped**. Production succeeds only when all 6,414 cues have an active,
+**Skipped**. Production succeeds only when all 6,475 cues have an active,
 approved take.
 
 ### The Python builder cannot import an audio module

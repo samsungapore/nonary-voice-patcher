@@ -63,14 +63,20 @@ The public profile is JSON version 1:
 {
   "version": 1,
   "game_code": "BSKE",
-  "voice_count": 6414,
+  "voice_count": 6475,
   "scripts": [
     {
       "path": "scr/a...fsb",
       "structural_sha256": "...",
       "alternative_structural_sha256": ["..."],
       "set_text_count": 123,
-      "voices": [{"ordinal": 7, "symbol": "SE_V0000"}]
+      "voices": [
+        {
+          "ordinal": 7,
+          "symbol": "SE_V0000",
+          "target_text_sha256": []
+        }
+      ]
     }
   ],
   "exact_repairs": []
@@ -81,6 +87,11 @@ Symbols must be a complete, ordered `SE_V0000` sequence. Script paths must be
 unique safe `scr/*.fsb` paths. A structural hash is computed from parsed script
 structure while excluding replaceable text payloads. `set_text_count` and
 ordinals provide an independent drift check.
+
+`target_text_sha256` is optional. An empty or omitted array makes the target
+unconditional. A non-empty array contains lowercase SHA-256 values of the
+exact raw `setText` payload bytes accepted for that target. The voice is
+injected when any listed hash matches; otherwise that line remains untouched.
 
 An exact repair names a damaged full-file SHA-256, the expected repaired
 SHA-256, accepted already-clean hashes, and offset/expected/replacement byte
@@ -101,6 +112,16 @@ for every voice in profile script order:
   setText ordinal as u64
 ```
 
+When any voice has a raw-text condition, the following suffix is included:
+
+```text
+"NVPACK-TARGET-TEXT-SHA256-V1\0"
+voice_count as u64
+for every voice in profile script order:
+  sorted hash count as u64
+  each 32-byte SHA-256 value in sorted order
+```
+
 The length and integer fields are little-endian. Both the dubbing project and
 French NVPACK v2 store this digest, so harmless profile JSON reformatting does
 not change the catalogue identity. Projects also retain the raw profile-file
@@ -114,7 +135,7 @@ contains:
 - project name and creation/update timestamps;
 - source-ROM filename, game code, and logical base-ROM SHA-256;
 - raw profile-file SHA-256 and the stable voice-catalogue SHA-256;
-- a `targets` object keyed by the complete `SE_V0000` through `SE_V6413`
+- a `targets` object keyed by the complete `SE_V0000` through `SE_V6474`
   sequence.
 
 Each target stores its structural `targetId` (`script_path#ordinal`), status,
@@ -123,7 +144,7 @@ digest. Each take stores a project-relative WAV path, recording dimensions,
 level statistics, creation time, and the SHA-256 of the committed file.
 
 The manifest intentionally contains no dialogue, surrounding context, speaker
-text, ROM bytes, or profile copy. The application reconstructs the 6,414 cues
+text, ROM bytes, or profile copy. The application reconstructs the 6,475 cues
 and their same-function context from the selected ROM whenever the project is
 opened.
 

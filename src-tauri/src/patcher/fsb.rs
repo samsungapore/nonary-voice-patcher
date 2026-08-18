@@ -51,6 +51,19 @@ pub enum FsbError {
 pub struct VoiceTarget {
     pub set_text_ordinal: usize,
     pub symbol: String,
+    /// Empty means the voice is valid for every translation. Otherwise the
+    /// voice is injected only when the raw setText bytes match one of these
+    /// reviewed SHA-256 digests.
+    pub target_text_sha256: Vec<[u8; 32]>,
+}
+
+impl VoiceTarget {
+    fn accepts_text(&self, text: &[u8]) -> bool {
+        self.target_text_sha256.is_empty()
+            || self
+                .target_text_sha256
+                .contains(&Sha256::digest(text).into())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -684,10 +697,7 @@ impl Script {
             if !is_voice_symbol(&target.symbol) {
                 return Err(FsbError::InvalidVoiceSymbol(target.symbol.clone()));
             }
-            if by_ordinal
-                .insert(target.set_text_ordinal, target.symbol.as_str())
-                .is_some()
-            {
+            if by_ordinal.insert(target.set_text_ordinal, target).is_some() {
                 return Err(FsbError::DuplicateSetText(target.set_text_ordinal));
             }
         }
@@ -698,10 +708,19 @@ impl Script {
             let old = std::mem::take(&mut function.operations);
             let mut target_for_index = HashMap::new();
             for (index, operation) in old.iter().enumerate() {
-                if operation.command() == 0x2f {
-                    if let Some(symbol) = by_ordinal.get(&global_ordinal) {
-                        target_for_index.insert(index, *symbol);
+                if let Operation::String {
+                    command: 0x2f,
+                    value,
+                } = operation
+                {
+                    if let Some(target) = by_ordinal.get(&global_ordinal) {
                         found.insert(global_ordinal);
+                        // A condition mismatch means that this reviewed voice
+                        // does not belong to this translation. It is not a ROM
+                        // compatibility error and must leave the line untouched.
+                        if target.accepts_text(value) {
+                            target_for_index.insert(index, target.symbol.as_str());
+                        }
                     }
                     global_ordinal += 1;
                 }
@@ -1129,6 +1148,98 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
+    fn script_with_texts(texts: &[&[u8]]) -> Script {
+        Script {
+            name: b"conditional_voice_test".to_vec(),
+            functions: vec![Function {
+                name: b"main".to_vec(),
+                operations: texts
+                    .iter()
+                    .map(|text| Operation::String {
+                        command: 0x2f,
+                        value: text.to_vec(),
+                    })
+                    .collect(),
+            }],
+            strings: Vec::new(),
+            exported_labels: Vec::new(),
+            global_variables: Vec::new(),
+        }
+    }
+
+    fn text_sha256(text: &[u8]) -> [u8; 32] {
+        Sha256::digest(text).into()
+    }
+
+    fn contains_voice(script: &Script, symbol: &str) -> bool {
+        let expected = format!(":{symbol}").into_bytes();
+        script
+            .functions
+            .iter()
+            .flat_map(|function| &function.operations)
+            .any(|operation| {
+                matches!(operation, Operation::F4 { first, second: None } if first == &expected)
+            })
+    }
+
+    #[test]
+    fn conditional_voice_injection_accepts_any_reviewed_raw_text_hash() {
+        let raw_text = [0x84, 0xbf, b'!', 0x87, 0x53, b'n'];
+        let mut script = script_with_texts(&[b"First", &raw_text]);
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 1,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"Not this one"), text_sha256(&raw_text)],
+            }])
+            .unwrap();
+
+        assert!(contains_voice(&script, "SE_V0000"));
+        assert_eq!(
+            script.set_text_values(),
+            vec![b"First".as_slice(), &raw_text]
+        );
+    }
+
+    #[test]
+    fn conditional_voice_mismatch_is_a_safe_skip() {
+        let mut script = script_with_texts(&[b"A different translation"]);
+        let original = script.clone();
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 0,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"The reviewed French line")],
+            }])
+            .unwrap();
+
+        assert_eq!(script, original);
+        assert!(!contains_voice(&script, "SE_V0000"));
+    }
+
+    #[test]
+    fn unconditional_targets_and_missing_ordinals_keep_their_existing_behavior() {
+        let mut script = script_with_texts(&[b"Any translation"]);
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 0,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: Vec::new(),
+            }])
+            .unwrap();
+        assert!(contains_voice(&script, "SE_V0000"));
+
+        let mut script = script_with_texts(&[b"Only ordinal zero exists"]);
+        assert!(matches!(
+            script.inject_voices(&[VoiceTarget {
+                set_text_ordinal: 1,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"Anything")],
+            }]),
+            Err(FsbError::MissingSetText(1))
+        ));
+    }
+
     #[test]
     fn dialogue_lines_keep_global_context_across_functions() {
         let script = Script {
@@ -1269,6 +1380,7 @@ mod tests {
             .map(|row| VoiceTarget {
                 set_text_ordinal: row[ordinal_column].parse().unwrap(),
                 symbol: row[symbol_column].to_string(),
+                target_text_sha256: Vec::new(),
             })
             .collect::<Vec<_>>();
 

@@ -7,7 +7,7 @@ the project uses semantic versioning for public releases.
 
 ### Added
 
-- A French Dubbing Studio with 6,414 ROM-derived dialogue cues, same-function
+- A French Dubbing Studio with 6,475 ROM-derived dialogue cues, same-function
   context, native microphone capture, immutable takes, review statuses, notes,
   playback, filtering, and keyboard navigation.
 - Text-free dubbing projects bound to the logical source ROM, target catalogue,
@@ -29,7 +29,10 @@ the project uses semantic versioning for public releases.
 - A current English desktop-interface screenshot in the README.
 - Reproducible research scripts and Python unit tests.
 - The reviewed baseline and extended-alignment decision ledgers required to
-  reproduce the final 6,414-target mapping.
+  reproduce the conservative 6,414-target mapping.
+- A separate reviewed-override ledger that adds or replaces 63 DS targets from
+  65 exact components, including 25 multi-page groups, two composite targets,
+  explicit speaker aliases, and one French-only raw-text condition.
 - A text-free production alignment, portable ROMFS extractor, pinned Python
   environment, and CrossOver decompilation wrapper for reproducing the hack.
 - A text-free compatibility source manifest for exact `voice-profile.json`
@@ -54,6 +57,8 @@ the project uses semantic versioning for public releases.
 - Updated the frontend toolchain to Vite 8, `@vitejs/plugin-react` 6, and
   TypeScript 7, and synchronized the Tauri dialog bindings at 2.7.2.
 - Updated the checkout, Node.js, and Python setup actions used by CI.
+- Expanded the production profile from 6,414 to 6,475 ordered voice slots while
+  keeping bottom-screen narration excluded.
 
 ### Fixed
 
@@ -75,6 +80,14 @@ the project uses semantic versioning for public releases.
   Windows MSVC CLI stays within the default console stack reserve.
 - The Python CI job now keys its dependency cache from
   `requirements-dev.txt`.
+- PC lines that span consecutive DS text boxes are cut at reviewed,
+  language-specific boundaries. Newly cut edges receive a deterministic 4 ms
+  fade, and composite targets keep a 65 ms gap between source messages.
+- Speaker-name differences are accepted only for the exact reviewed DS target
+  and PC message pair; numeric suffixes are never removed globally.
+- Interrupted voice-bank builds can resume only when an atomic provenance
+  record matches every source input and generation setting; normal builds
+  reject stale `SE_V` files instead of overwriting or mixing them.
 
 ### Removed
 

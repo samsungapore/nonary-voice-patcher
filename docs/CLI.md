@@ -84,8 +84,9 @@ need a resource directory.
 nonary-voice-patcher-cli reset voiced.nds restored.nds
 ```
 
-The source and destination must be distinct after canonicalization. Parent
-directories for CLI output are created as needed. A destination is published
+The source and destination must resolve to different files after aliases and
+symbolic links are followed. Parent directories for CLI output are created as
+needed. A destination is published
 only after the temporary ROM passes structural and byte-exact restoration
 checks.
 
@@ -162,7 +163,7 @@ and an exact-restoration status without a language line.
     "bytes": 314159265,
     "sha256": "...",
     "language": "japanese",
-    "voices": 6414,
+    "voices": 6475,
     "scripts": 51,
     "resetExact": false
   }
@@ -217,4 +218,4 @@ exit code and stdout envelope are authoritative.
 4. Wait for process termination before parsing the single stdout object.
 5. Require exit code `0`, `ok: true`, and supported `schemaVersion`.
 6. Treat output paths and SHA-256 values as untrusted data until validated.
-7. Never pass the same canonical path for input and output.
+7. Never pass input and output paths that resolve to the same file.

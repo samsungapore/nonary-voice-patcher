@@ -9,15 +9,17 @@ same injection pipeline.
 The project contains a Tauri desktop application, native recording and French
 preview tools, a headless Rust CLI, the ROM patching engine, and the research
 scripts used to derive the voice mapping.
-The current profile injects 6,414 voiced dialogue targets across 51 scripts.
-Narration is excluded unless the DS script names the same speaking character,
-which prevents Junpei's remake narration from playing over bottom-screen prose.
+The current profile defines 6,475 reviewed dialogue targets across 51 scripts.
+Of these, 6,474 apply to every supported ROM; one additional M10 target applies
+only when the raw text matches the reviewed French translation. Narration is
+excluded unless the DS script names the same speaking character, which prevents
+Junpei's remake narration from playing over bottom-screen prose.
 
 ![Nonary Voice Patcher desktop interface in English with Japanese voices selected](docs/assets/screenshots/nonary-voice-patcher-en.png)
 
 ## What the patch changes
 
-- Adds contiguous `sound/se_v0000.se` through `sound/se_v6413.se` resources.
+- Adds contiguous `sound/se_v0000.se` through `sound/se_v6474.se` resources.
 - Injects `PlaySE`/`WaitSE` operations at reviewed `setText` ordinals.
 - Extends `etc/sound.dat` with the generated voice symbols.
 - Silences the ten system text-bleep volume operands that would otherwise play
@@ -42,7 +44,7 @@ alignment decisions needed to reproduce them are tracked under
 
 ## French Dubbing Studio
 
-The desktop Studio derives 6,414 dialogue-only recording cues from a compatible
+The desktop Studio derives 6,475 dialogue-only recording cues from a compatible
 ROM. Each cue shows up to two neighboring lines on either side without crossing
 the current script function. Projects keep only statuses, notes, immutable WAV
 takes, hashes, and processing metadata; dialogue and context are decoded from
@@ -51,7 +53,7 @@ the selected ROM and are not copied into the manifest.
 The native preview builder uses active takes, inserts 80 ms silence for missing
 cues, writes `builds/voices-fr-preview.nvpack`, and immediately creates a
 reversible test ROM. Python tooling provides equivalent preview export and a
-strict production mode that requires all 6,414 cues to be approved. See the
+strict production mode that requires all 6,475 cues to be approved. See the
 [complete Dubbing Studio guide](docs/DUBBING_STUDIO.md).
 
 ## Required runtime files
@@ -96,9 +98,13 @@ Follow sections 1, 2, 6, and 9 of
 
 1. extract the DS filesystem and audio template;
 2. reconstruct the PC archive voice index;
-3. generate the 6,414 Japanese and English DS voice resources from the tracked
+3. generate the 6,475 Japanese and English DS voice resources from the tracked
    `research/alignment/final_voice_alignment.tsv` map;
 4. package them as `voices-jp.nvpack` and `voices-en.nvpack`.
+
+Generate the Japanese manifest from the same `ze1_data.bin` that will be read
+while building the bank. Archive offsets can differ between game revisions, so
+a manifest copied from another installation is not a safe substitute.
 
 The bundled `voice-profile.json` is already versioned and does not need to be
 generated. Its optional exact-regeneration procedure uses the tracked,
@@ -312,7 +318,7 @@ Tests that require private ROM or audio fixtures are marked as ignored.
 Cargo compiles only the program; it does not create or embed voice packs.
 Japanese and English `apply` operations require `voices-jp.nvpack` or
 `voices-en.nvpack`; French requires an explicit NVPACK v2. The tracked
-6,414-target runtime alignment makes the remake packs reproducible when
+6,475-target runtime alignment makes the remake packs reproducible when
 combined with the private game inputs listed in
 [docs/HACK_PROCESS.md](docs/HACK_PROCESS.md).
 

@@ -1715,8 +1715,8 @@ mod tests {
         let snapshot = create_project(project.path(), rom, profile, "French recording test")
             .expect("the reviewed French ROM should produce a dubbing catalog");
 
-        assert_eq!(snapshot.summary.total, 6_414);
-        assert_eq!(snapshot.cues.len(), 6_414);
+        assert_eq!(snapshot.summary.total, 6_475);
+        assert_eq!(snapshot.cues.len(), 6_475);
         assert_eq!(snapshot.cues[0].symbol, "SE_V0000");
         assert_eq!(snapshot.cues[0].speaker, "Junpei");
         assert!(snapshot

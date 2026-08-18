@@ -38,6 +38,11 @@ to the translated input. Reset reconstructs the raw French-patcher output,
 including its original pointer bytes, because reversibility takes precedence
 over retaining forward-only repairs.
 
+One reviewed M10 voice target exists only for this translation. The profile
+stores the SHA-256 of the exact raw `setText` payload bytes. That voice is
+injected only when the payload matches; the same slot is safely skipped on the
+stock US text or an unreviewed translation.
+
 Applying the voice patch first and then running an unrelated translation
 patcher is unsupported. A later tool may rewrite headers, truncate the appended
 receipt, or treat added files as an unexpected ROM layout.

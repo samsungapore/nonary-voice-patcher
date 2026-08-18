@@ -1121,7 +1121,7 @@ mod tests {
                 |_| {},
             )
             .unwrap();
-            assert_eq!(result.voices, 6_414);
+            assert_eq!(result.voices, 6_475);
             let patched_data = fs::read(&patched).unwrap();
             assert_french_texts_and_exact_repairs_preserved(&base_data, &patched_data, &profile);
             let patched_info = inspect_rom(&patched, &resources()).unwrap();
@@ -1158,7 +1158,7 @@ mod tests {
             |_| {},
         )
         .unwrap();
-        assert_eq!(result.voices, 6_414);
+        assert_eq!(result.voices, 6_475);
         assert_eq!(
             inspect_rom(&patched, &resources()).unwrap().state,
             RomPatchState::Japanese

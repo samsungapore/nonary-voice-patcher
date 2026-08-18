@@ -44,6 +44,7 @@ MAX_MASTER_CHANNELS = 8
 MAX_MASTER_SAMPLE_RATE = 384_000
 PREVIEW_SILENCE_MS = 80.0
 CATALOG_DOMAIN = b"NVPACK-CATALOG-V1\0"
+TARGET_TEXT_CATALOG_DOMAIN = b"NVPACK-TARGET-TEXT-SHA256-V1\0"
 APPROVAL_DOMAIN = b"NVDUB_APPROVAL_V1\0"
 VALID_STATUSES = {"missing", "recorded", "needs_review", "approved", "skipped"}
 PCM_CLIP_LIMIT = 0.999969
@@ -53,7 +54,11 @@ def _lock_descriptor(descriptor: int) -> None:
     if os.name == "nt":
         import msvcrt
 
-        retryable = {errno.EACCES, errno.EAGAIN, getattr(errno, "EDEADLK", errno.EACCES)}
+        retryable = {
+            errno.EACCES,
+            errno.EAGAIN,
+            getattr(errno, "EDEADLK", errno.EACCES),
+        }
         while True:
             os.lseek(descriptor, 0, os.SEEK_SET)
             try:
@@ -86,7 +91,9 @@ def project_mutation_lock(project_dir: Path) -> Iterator[None]:
     try:
         project_metadata = project_dir.lstat()
     except OSError as error:
-        raise ValueError(f"Cannot inspect project directory {project_dir}: {error}") from error
+        raise ValueError(
+            f"Cannot inspect project directory {project_dir}: {error}"
+        ) from error
     if stat.S_ISLNK(project_metadata.st_mode) or not stat.S_ISDIR(
         project_metadata.st_mode
     ):
@@ -169,7 +176,9 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def profile_targets(profile: dict[str, Any]) -> list[tuple[str, str, int]]:
     if profile.get("version") != 1:
-        raise ValueError(f"Unsupported voice profile version: {profile.get('version')!r}")
+        raise ValueError(
+            f"Unsupported voice profile version: {profile.get('version')!r}"
+        )
     result: list[tuple[str, str, int]] = []
     for script in profile.get("scripts", []):
         path = script.get("path")
@@ -191,7 +200,39 @@ def profile_targets(profile: dict[str, Any]) -> list[tuple[str, str, int]]:
     return result
 
 
-def catalog_sha256(targets: list[tuple[str, str, int]]) -> bytes:
+def profile_target_text_sha256(profile: dict[str, Any]) -> list[tuple[bytes, ...]]:
+    """Return validated target-text conditions in profile voice order."""
+    result: list[tuple[bytes, ...]] = []
+    for script in profile.get("scripts", []):
+        for voice in script.get("voices", []):
+            raw_hashes = voice.get("target_text_sha256", [])
+            if not isinstance(raw_hashes, list):
+                raise ValueError(
+                    f"Invalid target-text hashes for {voice.get('symbol')!r}: "
+                    "expected an array"
+                )
+            if any(not valid_sha256(value) for value in raw_hashes):
+                raise ValueError(
+                    f"Invalid target-text hash for {voice.get('symbol')!r}"
+                )
+            hashes = tuple(sorted(bytes.fromhex(value) for value in raw_hashes))
+            if len(hashes) != len(set(hashes)):
+                raise ValueError(
+                    f"Duplicate target-text hash for {voice.get('symbol')!r}"
+                )
+            result.append(hashes)
+    return result
+
+
+def catalog_sha256(
+    targets: list[tuple[str, str, int]],
+    target_text_sha256: list[tuple[bytes, ...]] | None = None,
+) -> bytes:
+    conditions = target_text_sha256 or [tuple() for _target in targets]
+    if len(conditions) != len(targets):
+        raise ValueError(
+            "Target-text condition count does not match the voice target count"
+        )
     digest = hashlib.sha256()
     digest.update(CATALOG_DOMAIN)
     digest.update(struct.pack("<Q", len(targets)))
@@ -203,6 +244,17 @@ def catalog_sha256(targets: list[tuple[str, str, int]]) -> bytes:
         digest.update(struct.pack("<Q", len(path_bytes)))
         digest.update(path_bytes)
         digest.update(struct.pack("<Q", ordinal))
+    # Only conditional profiles receive the suffix so projects and packs made
+    # from older profiles keep the catalogue identity they already recorded.
+    if any(conditions):
+        digest.update(TARGET_TEXT_CATALOG_DOMAIN)
+        digest.update(struct.pack("<Q", len(targets)))
+        for hashes in conditions:
+            digest.update(struct.pack("<Q", len(hashes)))
+            for value in sorted(hashes):
+                if len(value) != hashlib.sha256().digest_size:
+                    raise ValueError("Target-text SHA-256 must contain 32 bytes")
+                digest.update(value)
     return digest.digest()
 
 
@@ -296,10 +348,14 @@ def validate_project(
     raw_rom: bytes,
 ) -> None:
     if project.get("version") != PROJECT_VERSION:
-        raise ValueError(f"Unsupported dubbing project version: {project.get('version')!r}")
+        raise ValueError(
+            f"Unsupported dubbing project version: {project.get('version')!r}"
+        )
     if not valid_sha256(project.get("profileSha256")):
         raise ValueError("The project contains an invalid profile audit fingerprint")
-    expected_catalog = catalog_sha256(targets).hex()
+    expected_catalog = catalog_sha256(
+        targets, profile_target_text_sha256(profile)
+    ).hex()
     if project.get("profileCatalogSha256") != expected_catalog:
         raise ValueError(
             "The project voice catalogue does not match the selected voice profile"
@@ -414,9 +470,7 @@ def decode_master(
     ):
         raise ValueError(f"WAV master has unsafe dimensions: {path}")
     try:
-        samples, rate = sf.read(
-            io.BytesIO(raw_master), dtype="float32", always_2d=True
-        )
+        samples, rate = sf.read(io.BytesIO(raw_master), dtype="float32", always_2d=True)
     except (RuntimeError, OSError) as error:
         raise ValueError(f"Cannot decode WAV master {path}: {error}") from error
     if samples.size == 0 or rate <= 0:
@@ -451,12 +505,16 @@ def decode_master(
         raise ValueError(
             f"{path} is {duration:.3f}s after trimming; expected 0-{MAX_DURATION_SECONDS:.0f}s"
         )
-    return np.rint(np.clip(mono, -PCM_CLIP_LIMIT, PCM_CLIP_LIMIT) * 32767.0).astype(np.int16)
+    return np.rint(np.clip(mono, -PCM_CLIP_LIMIT, PCM_CLIP_LIMIT) * 32767.0).astype(
+        np.int16
+    )
 
 
 def atomic_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, raw_temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    descriptor, raw_temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
     temporary = Path(raw_temporary)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
@@ -477,9 +535,7 @@ def build(arguments: argparse.Namespace) -> dict[str, Any]:
         return _build_locked(arguments, project_dir)
 
 
-def _build_locked(
-    arguments: argparse.Namespace, project_dir: Path
-) -> dict[str, Any]:
+def _build_locked(arguments: argparse.Namespace, project_dir: Path) -> dict[str, Any]:
     manifest_path = project_dir / PROJECT_FILE
     profile_path = arguments.profile.resolve()
     rom_path = arguments.rom.resolve()
@@ -489,7 +545,7 @@ def _build_locked(
     profile = load_json(profile_path)
     raw_rom = read_limited_regular_bytes(rom_path, MAX_ROM_BYTES, "source ROM")
     targets = profile_targets(profile)
-    catalog_digest = catalog_sha256(targets)
+    catalog_digest = catalog_sha256(targets, profile_target_text_sha256(profile))
     validate_project(
         project, project_dir, profile_path, profile, targets, rom_path, raw_rom
     )
@@ -521,9 +577,7 @@ def _build_locked(
     # silence/audio from an earlier project state.
     build_root = project_dir / "builds"
     build_root.mkdir(parents=True, exist_ok=True)
-    temporary_voices = tempfile.TemporaryDirectory(
-        prefix=".voices-fr-", dir=build_root
-    )
+    temporary_voices = tempfile.TemporaryDirectory(prefix=".voices-fr-", dir=build_root)
     voices_dir = Path(temporary_voices.name)
     rom_snapshot = voices_dir / ".source-rom.nds"
     rom_snapshot.write_bytes(raw_rom)

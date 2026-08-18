@@ -35,6 +35,8 @@ pub struct ScriptProfile {
 pub struct ProfileVoice {
     pub ordinal: usize,
     pub symbol: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_text_sha256: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -104,6 +106,31 @@ impl VoiceProfile {
                 hasher.update((script.path.len() as u64).to_le_bytes());
                 hasher.update(script.path.as_bytes());
                 hasher.update((voice.ordinal as u64).to_le_bytes());
+            }
+        }
+        // Profiles without text conditions retain their original catalogue
+        // identity, so voice packs created before conditional targets existed
+        // remain usable. Once any condition is present, a separate framed
+        // suffix binds every voice's condition set to the pack identity.
+        if self
+            .scripts
+            .iter()
+            .flat_map(|script| &script.voices)
+            .any(|voice| !voice.target_text_sha256.is_empty())
+        {
+            hasher.update(b"NVPACK-TARGET-TEXT-SHA256-V1\0");
+            hasher.update((self.voice_count as u64).to_le_bytes());
+            for voice in self.scripts.iter().flat_map(|script| &script.voices) {
+                let mut hashes = voice
+                    .target_text_sha256
+                    .iter()
+                    .map(|hash| decode_sha256(hash).expect("profile validated before use"))
+                    .collect::<Vec<_>>();
+                hashes.sort_unstable();
+                hasher.update((hashes.len() as u64).to_le_bytes());
+                for hash in hashes {
+                    hasher.update(hash);
+                }
             }
         }
         hasher.finalize().into()
@@ -180,6 +207,15 @@ impl VoiceProfile {
                         voice.ordinal, script.path
                     )));
                 }
+                let mut target_hashes = HashSet::new();
+                for hash in &voice.target_text_sha256 {
+                    if !valid_sha256(hash) || !target_hashes.insert(hash) {
+                        return Err(ProfileError::Invalid(format!(
+                            "invalid or duplicate target-text hash for {} ordinal {}: {:?}",
+                            script.path, voice.ordinal, hash
+                        )));
+                    }
+                }
                 symbols.push(voice.symbol.as_str());
             }
         }
@@ -252,6 +288,11 @@ fn sha256_hex(data: &[u8]) -> String {
         .collect()
 }
 
+fn decode_sha256(value: &str) -> Option<[u8; 32]> {
+    let decoded = decode_hex(value)?;
+    decoded.try_into().ok()
+}
+
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
     if value.is_empty() || !value.len().is_multiple_of(2) {
         return None;
@@ -315,6 +356,11 @@ impl ScriptProfile {
             .map(|voice| VoiceTarget {
                 set_text_ordinal: voice.ordinal,
                 symbol: voice.symbol.clone(),
+                target_text_sha256: voice
+                    .target_text_sha256
+                    .iter()
+                    .map(|hash| decode_sha256(hash).expect("profile validated before use"))
+                    .collect(),
             })
             .collect()
     }
@@ -466,9 +512,8 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
-    #[test]
-    fn catalogue_digest_has_a_cross_platform_canonical_encoding() {
-        let profile = VoiceProfile {
+    fn two_voice_profile() -> VoiceProfile {
+        VoiceProfile {
             version: 1,
             game_code: "BSKE".to_owned(),
             voice_count: 2,
@@ -481,6 +526,7 @@ mod tests {
                     voices: vec![ProfileVoice {
                         ordinal: 3,
                         symbol: "SE_V0000".to_owned(),
+                        target_text_sha256: Vec::new(),
                     }],
                 },
                 ScriptProfile {
@@ -491,15 +537,94 @@ mod tests {
                     voices: vec![ProfileVoice {
                         ordinal: 9,
                         symbol: "SE_V0001".to_owned(),
+                        target_text_sha256: Vec::new(),
                     }],
                 },
             ],
             exact_repairs: Vec::new(),
-        };
+        }
+    }
+
+    #[test]
+    fn catalogue_digest_has_a_cross_platform_canonical_encoding() {
+        let profile = two_voice_profile();
         profile.validate().unwrap();
         assert_eq!(
             profile.catalog_sha256_hex(),
             "c602d805fa381873854a285472714d52a27075166e36be835a9426f33820fb63"
+        );
+    }
+
+    #[test]
+    fn catalogue_digest_binds_conditions_without_invalidating_old_packs() {
+        let unconditional = two_voice_profile();
+        let old_digest = unconditional.catalog_sha256_hex();
+
+        let mut conditional = unconditional.clone();
+        conditional.scripts[0].voices[0].target_text_sha256 = vec![
+            sha256_hex(b"French line"),
+            sha256_hex(b"Alternate reviewed line"),
+        ];
+        conditional.validate().unwrap();
+        assert_eq!(
+            conditional.catalog_sha256_hex(),
+            "72de08c4405427c820ea0bc11c82aa826cb28bac3cba74c272fca98a6d39ee7c"
+        );
+        assert_ne!(conditional.catalog_sha256_hex(), old_digest);
+
+        let mut reversed = conditional.clone();
+        reversed.scripts[0].voices[0].target_text_sha256.reverse();
+        assert_eq!(
+            reversed.catalog_sha256_hex(),
+            conditional.catalog_sha256_hex(),
+            "the accepted hashes form a set, so JSON order must not change pack identity"
+        );
+
+        let mut condition_on_another_voice = unconditional;
+        condition_on_another_voice.scripts[1].voices[0].target_text_sha256 =
+            conditional.scripts[0].voices[0].target_text_sha256.clone();
+        assert_ne!(
+            condition_on_another_voice.catalog_sha256_hex(),
+            conditional.catalog_sha256_hex(),
+            "the same condition attached to another symbol must require another pack"
+        );
+    }
+
+    #[test]
+    fn target_text_hashes_are_optional_but_each_value_must_be_exact() {
+        let original = two_voice_profile();
+        let mut json = serde_json::to_value(&original).unwrap();
+        let voice = &mut json["scripts"][0]["voices"][0];
+        assert!(voice.get("target_text_sha256").is_none());
+        let decoded = VoiceProfile::from_json(&serde_json::to_vec(&json).unwrap()).unwrap();
+        assert!(decoded.scripts[0].voices[0].target_text_sha256.is_empty());
+
+        for hashes in [
+            vec![String::new()],
+            vec!["0".repeat(63)],
+            vec!["GG".repeat(32)],
+            vec!["AA".repeat(32)],
+            vec!["12".repeat(32), "12".repeat(32)],
+        ] {
+            let mut invalid = original.clone();
+            invalid.scripts[0].voices[0].target_text_sha256 = hashes;
+            assert!(
+                matches!(invalid.validate(), Err(ProfileError::Invalid(reason)) if reason.contains("target-text hash"))
+            );
+        }
+    }
+
+    #[test]
+    fn profile_targets_decode_reviewed_text_hashes() {
+        let mut profile = two_voice_profile();
+        let expected: [u8; 32] = Sha256::digest([0x84, 0xbf, b'!', 0x87, 0x53]).into();
+        profile.scripts[0].voices[0].target_text_sha256 =
+            vec![expected.iter().map(|byte| format!("{byte:02x}")).collect()];
+        profile.validate().unwrap();
+
+        assert_eq!(
+            profile.scripts[0].targets()[0].target_text_sha256,
+            vec![expected]
         );
     }
 
@@ -516,7 +641,7 @@ mod tests {
         let rom = fs::read(root().join("original/Nine Hours, Nine Persons, Nine Doors (USA).nds"))
             .unwrap();
         profile.validate_rom(&NdsRom::parse(&rom).unwrap()).unwrap();
-        assert_eq!(profile.voice_count, 6_414);
+        assert_eq!(profile.voice_count, 6_475);
         assert_eq!(profile.scripts.len(), 51);
         assert_eq!(profile.exact_repairs.len(), 5);
     }

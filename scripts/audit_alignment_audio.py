@@ -18,6 +18,12 @@ except ImportError as error:  # pragma: no cover - depends on local environment
         "(for example: python3 -m pip install numpy)"
     ) from error
 
+from apply_reviewed_alignment_overrides import (
+    ReviewedOverride,
+    overrides_from_runtime_row,
+    runtime_component_values,
+    validate_overrides,
+)
 
 SEGMENT = re.compile(r"_(\d{2})\.ogg$", re.IGNORECASE)
 
@@ -32,9 +38,7 @@ def decrypt_tail(data: bytes, key: int, relative_offset: int) -> bytes:
     )
     key_bytes = np.frombuffer(key.to_bytes(4, "little"), dtype=np.uint8)
     return (
-        encrypted
-        ^ key_bytes[positions & 3]
-        ^ (positions & 0xFF).astype(np.uint8)
+        encrypted ^ key_bytes[positions & 3] ^ (positions & 0xFF).astype(np.uint8)
     ).tobytes()
 
 
@@ -80,24 +84,99 @@ def read_durations(archive_path: Path, manifest_path: Path) -> dict[str, float]:
 
 def contiguous_paths(row: dict[str, str]) -> list[str]:
     """Mirror build_voice_bank.py's path-hash collision filtering."""
-    numbered = []
-    for path in row["jp_ogg_paths"].split(" | "):
+    return [
+        path
+        for _message_id, paths in contiguous_paths_by_message(row)
+        for path in paths
+    ]
+
+
+def contiguous_paths_by_message(
+    row: dict[str, str],
+) -> list[tuple[str, list[str]]]:
+    identifiers = message_ids(row)
+    grouped: dict[str, list[str]] = {message_id: [] for message_id in identifiers}
+    for path in row["jp_ogg_paths"].split("|"):
         path = path.strip()
         if not path:
             continue
-        match = SEGMENT.search(path)
-        if not match:
-            raise ValueError(f"Voice path has no numeric segment: {path}")
-        numbered.append((int(match.group(1)), path))
-    numbered.sort()
-    if numbered and numbered[0][0] == 0:
-        result = []
-        for expected, (number, path) in enumerate(numbered):
-            if number != expected:
-                break
-            result.append(path)
-        return result
-    return [path for _, path in numbered]
+        stem = Path(path).stem
+        matches = [
+            message_id
+            for message_id in identifiers
+            if stem.startswith(f"{message_id}_")
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Voice path does not resolve to exactly one selected message: {path}"
+            )
+        grouped[matches[0]].append(path)
+
+    result = []
+    for message_id in identifiers:
+        numbered = []
+        for path in grouped[message_id]:
+            match = SEGMENT.search(path)
+            if not match:
+                raise ValueError(f"Voice path has no numeric segment: {path}")
+            numbered.append((int(match.group(1)), path))
+        if not numbered:
+            raise ValueError(f"Selected PC message has no Ogg path: {message_id}")
+        numbered.sort()
+        paths = []
+        if numbered[0][0] == 0:
+            for expected, (number, path) in enumerate(numbered):
+                if number != expected:
+                    break
+                paths.append(path)
+        else:
+            paths = [path for _number, path in numbered]
+        result.append((message_id, paths))
+    return result
+
+
+def message_ids(row: dict[str, str]) -> list[str]:
+    raw = row.get("pc_message_ids", "").strip() or row["pc_message_id"].strip()
+    values = [part.strip() for part in raw.split("|") if part.strip()]
+    if not values or len(values) != len(set(values)):
+        raise ValueError(f"Invalid grouped PC message IDs: {raw!r}")
+    return values
+
+
+def sliced_seconds(
+    seconds: float,
+    row: dict[str, str],
+    language: str,
+    *,
+    component_index: int = 0,
+    component_count: int = 1,
+) -> float:
+    start_value = runtime_component_values(
+        row,
+        f"{language}_start_ms",
+        component_count,
+        label=f"{language.upper()} start interval",
+    )[component_index]
+    end_value = runtime_component_values(
+        row,
+        f"{language}_end_ms",
+        component_count,
+        label=f"{language.upper()} end interval",
+    )[component_index]
+    if not start_value and not end_value:
+        return seconds
+    if not start_value.isascii() or not start_value.isdecimal():
+        raise ValueError(f"Invalid {language.upper()} slice start: {start_value!r}")
+    if end_value and (not end_value.isascii() or not end_value.isdecimal()):
+        raise ValueError(f"Invalid {language.upper()} slice end: {end_value!r}")
+    start = int(start_value) / 1000.0
+    end = int(end_value) / 1000.0 if end_value else seconds
+    if start >= end or end > seconds + 1e-6:
+        raise ValueError(
+            f"{language.upper()} slice {start:.3f}..{end:.3f}s is outside "
+            f"a {seconds:.3f}s voice"
+        )
+    return end - start
 
 
 def main() -> None:
@@ -131,23 +210,64 @@ def main() -> None:
         alignment = list(reader)
 
     grouped: dict[tuple[str, int], list[dict[str, str]]] = defaultdict(list)
-    source_ids = set()
-    for row in alignment:
-        message_id = row["pc_message_id"]
-        if message_id in source_ids:
-            raise ValueError(f"Duplicate PC message ID: {message_id}")
-        source_ids.add(message_id)
+    source_rows: dict[str, list[dict[str, str]]] = defaultdict(list)
+    reviewed_overrides: list[ReviewedOverride] = []
+    for row_number, row in enumerate(alignment, 2):
+        identifiers = message_ids(row)
+        if row.get("alignment_method", "").strip().casefold() == "reviewed_override":
+            normalized = dict(row)
+            normalized["pc_message_id"] = " | ".join(identifiers)
+            reviewed_overrides.extend(
+                overrides_from_runtime_row(normalized, row_number)
+            )
+        for message_id in identifiers:
+            source_rows[message_id].append(row)
         grouped[(row["ds_script"], int(row["ds_source_line"]))].append(row)
+    if reviewed_overrides:
+        validate_overrides(reviewed_overrides)
+    for message_id, usages in source_rows.items():
+        if len(usages) == 1:
+            continue
+        if any(
+            row.get("alignment_method", "").strip().casefold() != "reviewed_override"
+            for row in usages
+        ):
+            raise ValueError(f"Duplicate PC message ID: {message_id}")
+        groups = {row.get("reviewed_override_group", "") for row in usages}
+        if len(groups) != 1 or not next(iter(groups)):
+            raise ValueError(
+                f"PC message {message_id!r} is reused outside one reviewed split group"
+            )
 
     audit_rows = []
     failures = []
     for (script, source_line), rows in sorted(grouped.items()):
         paths = [path for row in rows for path in contiguous_paths(row)]
+        seconds = 0.0
         try:
-            seconds = sum(durations[path] for path in paths)
+            for row in rows:
+                components = contiguous_paths_by_message(row)
+                for component_index, (_message_id, component_paths) in enumerate(
+                    components
+                ):
+                    component_seconds = sum(durations[path] for path in component_paths)
+                    component_seconds += (
+                        args.silence_ms / 1000.0 * max(0, len(component_paths) - 1)
+                    )
+                    if component_index:
+                        seconds += args.silence_ms / 1000.0
+                    seconds += sliced_seconds(
+                        component_seconds,
+                        row,
+                        "jp",
+                        component_index=component_index,
+                        component_count=len(components),
+                    )
         except KeyError as error:
-            raise KeyError(f"Alignment path absent from manifest: {error.args[0]}") from error
-        seconds += args.silence_ms / 1000.0 * max(0, len(paths) - 1)
+            raise KeyError(
+                f"Alignment path absent from manifest: {error.args[0]}"
+            ) from error
+        seconds += args.silence_ms / 1000.0 * max(0, len(rows) - 1)
         first = rows[0]
         audit_rows.append(
             {
@@ -157,7 +277,7 @@ def main() -> None:
                 "ds_speaker": first["ds_speaker"],
                 "ds_text": first["ds_text"],
                 "pc_message_ids": " | ".join(row["pc_message_id"] for row in rows),
-                "message_count": len(rows),
+                "message_count": sum(len(message_ids(row)) for row in rows),
                 "ogg_clip_count": len(paths),
                 "duration_seconds": f"{seconds:.6f}",
                 "below_limit": str(seconds < args.max_duration).lower(),
@@ -179,7 +299,7 @@ def main() -> None:
 
     maximum = max(float(row["duration_seconds"]) for row in audit_rows)
     print(
-        f"pc_messages={len(source_ids)}, ds_lines={len(audit_rows)}, "
+        f"pc_messages={len(source_rows)}, ds_lines={len(audit_rows)}, "
         f"max_duration={maximum:.6f}, failures={len(failures)}, "
         f"output={args.output_tsv}"
     )

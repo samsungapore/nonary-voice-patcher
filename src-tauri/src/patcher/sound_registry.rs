@@ -496,7 +496,7 @@ mod tests {
         let names = fs::read_to_string(root.join("build/voice_symbols_extended_dialogue_only.txt"))
             .unwrap();
         let symbols = names.lines().collect::<Vec<_>>();
-        assert_eq!(symbols.len(), 6_414);
+        assert_eq!(symbols.len(), 6_475);
         assert!(symbols
             .iter()
             .enumerate()

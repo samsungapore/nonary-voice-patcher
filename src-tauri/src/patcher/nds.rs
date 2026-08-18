@@ -1373,19 +1373,19 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(voice_specs.len(), 6_414);
+        assert_eq!(voice_specs.len(), 6_475);
         assert_eq!(
             voice_specs
                 .iter()
                 .map(|voice| u64::from(voice.size))
                 .sum::<u64>(),
-            182_806_656
+            185_035_296
         );
         let complete_plan = rom.plan_sound_voice_append(&voice_specs, &[]).unwrap();
-        assert_eq!(complete_plan.final_fat.len(), 12_834);
-        assert_eq!(complete_plan.payloads.len(), 6_414);
-        assert_eq!(complete_plan.id_for_path("sound/se_v6413.se"), Some(12_829));
-        assert_eq!(complete_plan.new_id_for_old(6_419), Some(12_833));
+        assert_eq!(complete_plan.final_fat.len(), 12_895);
+        assert_eq!(complete_plan.payloads.len(), 6_475);
+        assert_eq!(complete_plan.id_for_path("sound/se_v6474.se"), Some(12_890));
+        assert_eq!(complete_plan.new_id_for_old(6_419), Some(12_894));
         assert_eq!(complete_plan.device_capacity, 12);
         assert!(complete_plan.final_len < complete_plan.declared_capacity_bytes);
     }

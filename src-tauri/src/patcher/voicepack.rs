@@ -655,10 +655,10 @@ mod tests {
         let en = VoicePack::open(resource("voices-en.nvpack")).unwrap();
         assert_eq!(jp.language(), Language::Japanese);
         assert_eq!(en.language(), Language::English);
-        assert_eq!(jp.entries().len(), 6_414);
-        assert_eq!(en.entries().len(), 6_414);
-        assert_eq!(jp.payload_size(), 182_806_656);
-        assert_eq!(en.payload_size(), 147_356_608);
+        assert_eq!(jp.entries().len(), 6_475);
+        assert_eq!(en.entries().len(), 6_475);
+        assert_eq!(jp.payload_size(), 185_035_296);
+        assert_eq!(en.payload_size(), 149_225_824);
     }
 
     #[test]
@@ -666,7 +666,7 @@ mod tests {
     fn copies_and_verifies_real_entries() {
         for name in ["voices-jp.nvpack", "voices-en.nvpack"] {
             let pack = VoicePack::open(resource(name)).unwrap();
-            for index in [0, 3_207, 6_413] {
+            for index in [0, 3_237, 6_474] {
                 let mut output = Vec::new();
                 pack.copy_entry_to(index, &mut output).unwrap();
                 assert_eq!(output.len(), pack.entries()[index].size as usize);

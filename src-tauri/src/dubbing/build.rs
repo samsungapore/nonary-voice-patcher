@@ -1974,8 +1974,8 @@ mod tests {
         assert!(matches!(
             error,
             BuildError::ProductionIncomplete {
-                total: 6_414,
-                missing: 6_414,
+                total: 6_475,
+                missing: 6_475,
                 ..
             }
         ));
@@ -1995,9 +1995,9 @@ mod tests {
             |_| {},
         )
         .unwrap();
-        assert_eq!(result.voice_pack.voices, 6_414);
-        assert_eq!(result.voice_pack.silent_preview_entries, 6_414);
-        assert_eq!(result.rom.voices, 6_414);
+        assert_eq!(result.voice_pack.voices, 6_475);
+        assert_eq!(result.voice_pack.silent_preview_entries, 6_475);
+        assert_eq!(result.rom.voices, 6_475);
         let (restored, located) = receipt::restore_base(&output_rom).unwrap();
         assert_eq!(located.receipt.language, receipt::PatchedLanguage::French);
         assert_eq!(restored, read_clean_or_restored_base(&rom_path).unwrap());

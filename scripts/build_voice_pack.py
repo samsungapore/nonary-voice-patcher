@@ -202,7 +202,10 @@ def main() -> None:
     parser.add_argument("--language", choices=("jp", "en", "fr"), required=True)
     parser.add_argument(
         "--catalog-sha256",
-        help="64-hex canonical target-catalog digest; writes a version 2 pack",
+        help=(
+            "64 lowercase hex characters for the exact target-catalogue SHA-256; "
+            "writes a version 2 pack"
+        ),
     )
     args = parser.parse_args()
     try:

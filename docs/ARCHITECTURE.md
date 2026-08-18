@@ -22,7 +22,7 @@ flowchart LR
   Receipt --> Output["Atomically published ROM"]
 
   Studio["Dubbing Studio UI"] --> Project["Text-free project manifest"]
-  ROM["Compatible ROM"] --> Context["6,414 cues and same-function context"]
+  ROM["Compatible ROM"] --> Context["6,475 cues and same-function context"]
   Context --> Studio
   Mic["Native microphone input"] --> WAV["Immutable WAV takes"]
   Studio --> Mic
@@ -71,6 +71,7 @@ stream.
 - game code `BSKE`;
 - the required contiguous voice count;
 - per-script structural fingerprints and `setText` ordinals;
+- optional exact raw-text SHA-256 conditions for translation-specific targets;
 - alternative reviewed fingerprints for compatible translations;
 - exact, hash-pinned pointer repairs for five French-patched files.
 
@@ -84,6 +85,10 @@ The FSB parser validates SIR0 pointers and relocation tables, repairs only the
 known class of invalid relocated French pointers, injects voice operations, and
 reparses the result. The engine compares every `setText` payload before and
 after injection.
+
+For a translation-specific target, the parser hashes the exact raw `setText`
+payload before injection. A listed SHA-256 enables that voice; a mismatch
+leaves the line untouched without weakening structural compatibility checks.
 
 `sound_registry.rs` appends the `SE_V####` symbols while rebuilding categories
 and relocations. `se_sys.rs` recognizes the complete expected routing graph and
@@ -155,7 +160,7 @@ arbitrary ROM data.
 
 ## Apply sequence
 
-1. Canonicalize paths and reject identical input/output files.
+1. Resolve path aliases and reject identical input/output files.
 2. If the input is already patched, restore its verified base in memory.
 3. Parse the NDS header, FNT, FAT, overlays, and source CRC.
 4. Validate profile structure and any exact repair fingerprints.
@@ -171,7 +176,7 @@ arbitrary ROM data.
 
 | Invariant | Enforcement |
 | --- | --- |
-| Source and destination differ | Canonical path comparison |
+| Source and destination differ | Resolved absolute-path comparison |
 | Unknown ROM structure is not patched | Game code, FSB structure, profile hashes |
 | Existing text remains exact | Pre/post `setText` byte comparison |
 | Voice symbols and files are contiguous | Profile, pack, FNT, and FAT validation |

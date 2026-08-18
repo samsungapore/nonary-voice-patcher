@@ -61,6 +61,21 @@ fn column(header: &[&str], name: &str) -> usize {
         .unwrap_or_else(|| panic!("missing TSV column {name}"))
 }
 
+fn optional_column(header: &[&str], name: &str) -> Option<usize> {
+    header.iter().position(|value| *value == name)
+}
+
+fn target_text_hashes(row: &[&str], hash_column: Option<usize>) -> Vec<String> {
+    hash_column
+        .and_then(|index| row.get(index))
+        .into_iter()
+        .flat_map(|value| value.split('|'))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 fn script_path(root: &Path, path: &str) -> PathBuf {
     let nested = root.join(path);
     if nested.is_file() {
@@ -144,6 +159,7 @@ fn main() {
     let script_column = column(&header, "ds_script");
     let ordinal_column = column(&header, "ds_settext_ordinal");
     let symbol_column = column(&header, "symbol");
+    let target_text_hash_column = optional_column(&header, "target_text_sha256");
 
     let mut grouped: BTreeMap<String, Vec<ProfileVoice>> = BTreeMap::new();
     for line in lines {
@@ -158,6 +174,7 @@ fn main() {
             .push(ProfileVoice {
                 ordinal: row[ordinal_column].parse().expect("setText ordinal"),
                 symbol: row[symbol_column].to_owned(),
+                target_text_sha256: target_text_hashes(&row, target_text_hash_column),
             });
     }
 
@@ -235,4 +252,37 @@ fn main() {
         profile.to_pretty_json().expect("serialize profile"),
     )
     .expect("write profile");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn target_hash_column_is_optional_and_accepts_reviewed_alternatives() {
+        let legacy_header = ["symbol", "ds_script"];
+        assert_eq!(
+            target_text_hashes(
+                &["SE_V0000", "a.fsb.txt"],
+                optional_column(&legacy_header, "target_text_sha256")
+            ),
+            Vec::<String>::new()
+        );
+
+        let header = ["symbol", "target_text_sha256"];
+        assert_eq!(
+            target_text_hashes(
+                &["SE_V0000", " aa | bb  |  cc "],
+                optional_column(&header, "target_text_sha256")
+            ),
+            ["aa", "bb", "cc"]
+        );
+        assert_eq!(
+            target_text_hashes(
+                &["SE_V0000", "  "],
+                optional_column(&header, "target_text_sha256")
+            ),
+            Vec::<String>::new()
+        );
+    }
 }

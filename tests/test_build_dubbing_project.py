@@ -61,6 +61,67 @@ class DubbingProjectBuilderTests(unittest.TestCase):
             "5ccf96e3ae549556643b71b0039671a28da9f9eacd0797783d2657eb4d398c55",
         )
 
+    def test_catalog_digest_matches_rust_for_conditional_targets(self) -> None:
+        profile = {
+            "version": 1,
+            "voice_count": 2,
+            "scripts": [
+                {
+                    "path": "scr/a.fsb",
+                    "voices": [
+                        {
+                            "symbol": "SE_V0000",
+                            "ordinal": 3,
+                            "target_text_sha256": [
+                                hashlib.sha256(b"French line").hexdigest(),
+                                hashlib.sha256(b"Alternate reviewed line").hexdigest(),
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "path": "scr/b.fsb",
+                    "voices": [{"symbol": "SE_V0001", "ordinal": 9}],
+                },
+            ],
+        }
+        self.assertEqual(
+            builder.catalog_sha256(
+                builder.profile_targets(profile),
+                builder.profile_target_text_sha256(profile),
+            ).hex(),
+            "72de08c4405427c820ea0bc11c82aa826cb28bac3cba74c272fca98a6d39ee7c",
+        )
+
+        profile["scripts"][0]["voices"][0]["target_text_sha256"].reverse()
+        self.assertEqual(
+            builder.catalog_sha256(
+                builder.profile_targets(profile),
+                builder.profile_target_text_sha256(profile),
+            ).hex(),
+            "72de08c4405427c820ea0bc11c82aa826cb28bac3cba74c272fca98a6d39ee7c",
+        )
+
+    def test_profile_rejects_invalid_target_text_hashes(self) -> None:
+        profile = {
+            "version": 1,
+            "voice_count": 1,
+            "scripts": [
+                {
+                    "path": "scr/a.fsb",
+                    "voices": [
+                        {
+                            "symbol": "SE_V0000",
+                            "ordinal": 0,
+                            "target_text_sha256": ["AA" * 32],
+                        }
+                    ],
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "Invalid target-text hash"):
+            builder.profile_target_text_sha256(profile)
+
     def test_take_path_cannot_escape_the_project(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -71,8 +132,12 @@ class DubbingProjectBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "escapes"):
                 builder.safe_project_file(project, "../take.wav")
 
-    @unittest.skipIf(os.name == "nt", "symlink creation is not reliably available in Windows CI")
-    def test_take_path_rejects_a_symlink_even_when_it_resolves_inside_project(self) -> None:
+    @unittest.skipIf(
+        os.name == "nt", "symlink creation is not reliably available in Windows CI"
+    )
+    def test_take_path_rejects_a_symlink_even_when_it_resolves_inside_project(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             recordings = project / "recordings"
@@ -80,9 +145,7 @@ class DubbingProjectBuilderTests(unittest.TestCase):
             real_target.mkdir(parents=True)
             (recordings / "SE_V0000").symlink_to(real_target, target_is_directory=True)
             with self.assertRaisesRegex(ValueError, "symbolic link"):
-                builder.safe_project_file(
-                    project, "recordings/SE_V0000/take.wav"
-                )
+                builder.safe_project_file(project, "recordings/SE_V0000/take.wav")
 
     def test_output_pack_cannot_replace_inputs_or_recordings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -109,7 +172,9 @@ class DubbingProjectBuilderTests(unittest.TestCase):
                 rom,
                 recordings / "take.wav",
             ):
-                with self.assertRaisesRegex(ValueError, "overwrite|required|recordings"):
+                with self.assertRaisesRegex(
+                    ValueError, "overwrite|required|recordings"
+                ):
                     builder.validate_output_pack_path(
                         unsafe, project, manifest, profile, rom
                     )
@@ -128,7 +193,9 @@ class DubbingProjectBuilderTests(unittest.TestCase):
             marker = project / "contender-acquired"
             child: subprocess.Popen[str] | None = None
 
-            def fake_publication(_arguments: object, locked_project: Path) -> dict[str, int]:
+            def fake_publication(
+                _arguments: object, locked_project: Path
+            ) -> dict[str, int]:
                 nonlocal child
                 script = "\n".join(
                     (
@@ -157,7 +224,9 @@ class DubbingProjectBuilderTests(unittest.TestCase):
                 return {"voices": 0}
 
             arguments = SimpleNamespace(project_dir=project)
-            with mock.patch.object(builder, "_build_locked", side_effect=fake_publication):
+            with mock.patch.object(
+                builder, "_build_locked", side_effect=fake_publication
+            ):
                 self.assertEqual(builder.build(arguments), {"voices": 0})
 
             assert child is not None
