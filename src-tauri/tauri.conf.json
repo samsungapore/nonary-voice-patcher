@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Nonary Voice Patcher",
-        "width": 1040,
-        "height": 760,
+        "width": 1360,
+        "height": 860,
         "minWidth": 860,
         "minHeight": 680,
         "resizable": true,
@@ -22,15 +22,15 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none'"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "category": "Utility",
-    "shortDescription": "Adds Japanese or English voices to 999 on Nintendo DS.",
-    "longDescription": "A reversible binary patcher for Nine Hours, Nine Persons, Nine Doors that adds Japanese or English voices without replacing the ROM's text.",
+    "shortDescription": "Creates and applies voice dubbing for 999 on Nintendo DS.",
+    "longDescription": "A reversible voice patcher and recording studio for Nine Hours, Nine Persons, Nine Doors that preserves the ROM's text.",
     "resources": ["resources/"],
     "icon": [
       "icons/32x32.png",

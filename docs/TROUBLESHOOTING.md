@@ -35,9 +35,9 @@ prove how a legacy image was built and will not stack onto it.
 
 ## Output path equals input
 
-Choose another file. Aliases, symlinks, relative paths, and case variants are
-canonicalized where the platform permits, so changing only the spelling is not
-enough.
+Choose another file. The patcher resolves aliases, symbolic links, relative
+paths, and case variants where the platform permits, so changing only the
+spelling is not enough.
 
 ## Reset says no patch was detected
 
@@ -56,7 +56,7 @@ payload hash, entry count, and every entry digest are independently checked.
 
 Verify that:
 
-- the profile and pack both contain 6,414 contiguous entries;
+- the profile and pack both contain 6,475 contiguous entries;
 - scripts contain matching `SE_V####` operations;
 - `etc/sound.dat` contains the complete symbol sequence;
 - internal DSE IDs do not collide with retail resources;
@@ -69,10 +69,20 @@ Run `scripts/verify_rom.py` and the first-voice melonDS scenario from
 ## Junpei speaks during bottom-screen narration
 
 The build is using the broad experimental alignment or a bank created with
-`--allow-narration-voices`. Rebuild from
-`alignment_extended_dialogue_only.tsv`, keep `--speaker-policy same`, and do
-not enable the narration override. The production profile must report exactly
-6,414 targets.
+`--allow-narration-voices`. Rebuild the conservative alignment with
+`--speaker-policy same`, apply `reviewed_alignment_overrides.tsv`, and export
+the tracked `final_voice_alignment.tsv`. Do not enable the narration override.
+The production profile must report exactly 6,475 targets.
+
+## Japanese source audio does not decrypt
+
+Regenerate `ze1_jp_dialogue_voice_manifest.tsv` from the exact
+`ze1_data.bin` passed to `build_voice_bank.py`. The manifest stores archive
+offsets, so a manifest from another game revision or modified installation can
+resolve a familiar path to the wrong bytes. Resume accepts only the exact
+archive, manifest, alignment, template, source ROM, language, and generation
+settings recorded in `.voice-bank-build.json`. If any of them changed, use an
+empty voice output directory and omit `--resume`.
 
 ## Text bleeps still play over voices
 

@@ -1,7 +1,7 @@
 [package]
 name = "nonary-voice-patcher"
 version = "0.1.0"
-description = "Reversible Japanese and English voice patcher for 999 on Nintendo DS"
+description = "Reversible voice patcher and French dubbing studio for 999 on Nintendo DS"
 authors = ["Kazuhiro"]
 edition = "2021"
 license = "MIT"
@@ -11,6 +11,9 @@ autobins = false
 [features]
 default = ["gui"]
 gui = [
+    "dep:cpal",
+    "dep:hound",
+    "dep:rubato",
     "dep:tauri",
     "dep:tauri-build",
     "dep:tauri-plugin-dialog",
@@ -54,6 +57,9 @@ required-features = ["dev-tools"]
 tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
+cpal = { version = "0.16", optional = true }
+hound = { version = "3.5", optional = true }
+rubato = { version = "0.16.2", optional = true }
 tauri = { version = "2", features = [], optional = true }
 tauri-plugin-opener = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
@@ -64,6 +70,8 @@ thiserror = "2.0.18"
 zstd = "0.13.3"
 tempfile = "3.27.0"
 clap = { version = "4.5", features = ["derive"] }
+encoding_rs = "0.8"
+fs2 = "0.4.3"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

@@ -25,7 +25,7 @@ nonary-voice-patcher-cli [--json] [--resources-dir DIR] <COMMAND>
 
 Commands:
   inspect <INPUT_ROM>
-  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en>
+  apply <INPUT_ROM> <OUTPUT_ROM> --language <jp|en|fr> [--voice-pack FILE]
   reset <PATCHED_ROM> <OUTPUT_ROM>
 ```
 
@@ -39,6 +39,7 @@ compatibility checks, and reports one of these states:
 - `clean`
 - `japanese`
 - `english`
+- `french`
 - `legacy_voice_patch`
 - `unsupported`
 
@@ -52,10 +53,10 @@ nonary-voice-patcher-cli \
 
 ### `apply`
 
-Creates a new Japanese- or English-voiced ROM. If the input contains a valid
-receipt from this patcher, the engine first restores its base; applying `en` to
-a JP-patched ROM therefore switches the voice language without stacking two
-patches.
+Creates a new Japanese-, English-, or French-voiced ROM. If the input contains
+a valid receipt from this patcher, the engine first restores its base; applying
+`en` to a JP-patched ROM therefore switches the voice language without stacking
+two patches.
 
 ```sh
 nonary-voice-patcher-cli --resources-dir ./resources \
@@ -63,9 +64,16 @@ nonary-voice-patcher-cli --resources-dir ./resources \
 
 nonary-voice-patcher-cli --resources-dir ./resources \
   apply source.nds output.nds --language en
+
+nonary-voice-patcher-cli --resources-dir ./resources \
+  apply source.nds output.nds --language fr \
+  --voice-pack ./studio-export/voices-fr.nvpack
 ```
 
-`apply` needs the profile and only the pack selected by `--language`.
+`apply` needs the profile and a matching pack. Japanese and English use the
+pack selected from the resource directory. French studio exports are not
+bundled resources, so `--voice-pack FILE` is required for `--language fr`.
+The pack's embedded language code is checked before any output is written.
 
 ### `reset`
 
@@ -76,8 +84,9 @@ need a resource directory.
 nonary-voice-patcher-cli reset voiced.nds restored.nds
 ```
 
-The source and destination must be distinct after canonicalization. Parent
-directories for CLI output are created as needed. A destination is published
+The source and destination must resolve to different files after aliases and
+symbolic links are followed. Parent directories for CLI output are created as
+needed. A destination is published
 only after the temporary ROM passes structural and byte-exact restoration
 checks.
 
@@ -154,7 +163,7 @@ and an exact-restoration status without a language line.
     "bytes": 314159265,
     "sha256": "...",
     "language": "japanese",
-    "voices": 6414,
+    "voices": 6475,
     "scripts": 51,
     "resetExact": false
   }
@@ -209,4 +218,4 @@ exit code and stdout envelope are authoritative.
 4. Wait for process termination before parsing the single stdout object.
 5. Require exit code `0`, `ok: true`, and supported `schemaVersion`.
 6. Treat output paths and SHA-256 values as untrusted data until validated.
-7. Never pass the same canonical path for input and output.
+7. Never pass input and output paths that resolve to the same file.

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use encoding_rs::SHIFT_JIS;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -50,6 +51,19 @@ pub enum FsbError {
 pub struct VoiceTarget {
     pub set_text_ordinal: usize,
     pub symbol: String,
+    /// Empty means the voice is valid for every translation. Otherwise the
+    /// voice is injected only when the raw setText bytes match one of these
+    /// reviewed SHA-256 digests.
+    pub target_text_sha256: Vec<[u8; 32]>,
+}
+
+impl VoiceTarget {
+    fn accepts_text(&self, text: &[u8]) -> bool {
+        self.target_text_sha256.is_empty()
+            || self
+                .target_text_sha256
+                .contains(&Sha256::digest(text).into())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +73,14 @@ pub struct Script {
     pub strings: Vec<Vec<u8>>,
     pub exported_labels: Vec<Vec<u8>>,
     pub global_variables: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DialogueLine {
+    pub ordinal: usize,
+    pub function_name: Vec<u8>,
+    pub speaker: Vec<u8>,
+    pub text: Vec<u8>,
 }
 
 /// Compatibility result kept separate so callers cannot silently ignore that
@@ -578,6 +600,38 @@ fn wait_sequence(symbol: &str) -> Vec<Operation> {
 }
 
 impl Script {
+    pub fn dialogue_lines(&self) -> Vec<DialogueLine> {
+        let mut lines = Vec::new();
+        let mut speaker = Vec::new();
+        let mut ordinal = 0usize;
+
+        for function in &self.functions {
+            for operation in &function.operations {
+                match operation {
+                    Operation::String {
+                        command: 0x28,
+                        value,
+                    } => speaker.clone_from(value),
+                    Operation::String {
+                        command: 0x2f,
+                        value,
+                    } => {
+                        lines.push(DialogueLine {
+                            ordinal,
+                            function_name: function.name.clone(),
+                            speaker: speaker.clone(),
+                            text: value.clone(),
+                        });
+                        ordinal += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        lines
+    }
+
     pub fn set_text_count(&self) -> usize {
         self.functions
             .iter()
@@ -643,10 +697,7 @@ impl Script {
             if !is_voice_symbol(&target.symbol) {
                 return Err(FsbError::InvalidVoiceSymbol(target.symbol.clone()));
             }
-            if by_ordinal
-                .insert(target.set_text_ordinal, target.symbol.as_str())
-                .is_some()
-            {
+            if by_ordinal.insert(target.set_text_ordinal, target).is_some() {
                 return Err(FsbError::DuplicateSetText(target.set_text_ordinal));
             }
         }
@@ -657,10 +708,19 @@ impl Script {
             let old = std::mem::take(&mut function.operations);
             let mut target_for_index = HashMap::new();
             for (index, operation) in old.iter().enumerate() {
-                if operation.command() == 0x2f {
-                    if let Some(symbol) = by_ordinal.get(&global_ordinal) {
-                        target_for_index.insert(index, *symbol);
+                if let Operation::String {
+                    command: 0x2f,
+                    value,
+                } = operation
+                {
+                    if let Some(target) = by_ordinal.get(&global_ordinal) {
                         found.insert(global_ordinal);
+                        // A condition mismatch means that this reviewed voice
+                        // does not belong to this translation. It is not a ROM
+                        // compatibility error and must leave the line untouched.
+                        if target.accepts_text(value) {
+                            target_for_index.insert(index, target.symbol.as_str());
+                        }
                     }
                     global_ordinal += 1;
                 }
@@ -768,6 +828,99 @@ impl Script {
         output[8..12].copy_from_slice(&relocation_offset.to_le_bytes());
         Ok(output)
     }
+}
+
+fn private_french_glyph(pair: &[u8]) -> Option<char> {
+    match pair {
+        [0x84, 0xbf] => Some('é'),
+        [0x84, 0xc0] => Some('è'),
+        [0x84, 0xc1] => Some('ê'),
+        [0x84, 0xc2] => Some('ë'),
+        [0x84, 0xc3] => Some('à'),
+        [0x84, 0xc4] => Some('â'),
+        [0x84, 0xc5] => Some('ù'),
+        [0x84, 0xc6] => Some('û'),
+        [0x84, 0xc7] => Some('î'),
+        [0x84, 0xc8] => Some('ï'),
+        [0x84, 0xc9] => Some('ô'),
+        [0x84, 0xca] => Some('ç'),
+        [0x84, 0xcb] => Some('Ç'),
+        [0x84, 0xcc] => Some('À'),
+        [0x84, 0xcd] => Some('É'),
+        [0x84, 0xce] => Some('Ê'),
+        _ => None,
+    }
+}
+
+fn shift_jis_character_len(first: u8) -> usize {
+    if (0x81..=0x9f).contains(&first) || (0xe0..=0xfc).contains(&first) {
+        2
+    } else {
+        1
+    }
+}
+
+fn discard_display_control<I>(characters: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = char>,
+{
+    let Some(command) = characters.peek().copied() else {
+        return;
+    };
+    if !matches!(
+        command,
+        'B' | 'C' | 'F' | 'K' | 'N' | 'S' | 'Z' | 'c' | 'f' | 'n' | 's' | 'w'
+    ) {
+        return;
+    }
+    characters.next();
+    if command == 'B' && characters.peek().is_some_and(char::is_ascii_uppercase) {
+        characters.next();
+        return;
+    }
+
+    let mut consumed_number = false;
+    while characters.peek().is_some_and(char::is_ascii_digit) {
+        characters.next();
+        consumed_number = true;
+    }
+    if consumed_number && characters.peek() == Some(&'.') {
+        characters.next();
+    }
+}
+
+pub fn decode_display_text(raw: &[u8]) -> String {
+    let mut decoded = String::new();
+    let mut cursor = 0usize;
+    while cursor < raw.len() {
+        if let Some(glyph) = raw
+            .get(cursor..cursor.saturating_add(2))
+            .and_then(private_french_glyph)
+        {
+            decoded.push(glyph);
+            cursor += 2;
+            continue;
+        }
+
+        let length = shift_jis_character_len(raw[cursor]).min(raw.len() - cursor);
+        let (character, _) = SHIFT_JIS.decode_without_bom_handling(&raw[cursor..cursor + length]);
+        decoded.push_str(&character);
+        cursor += length;
+    }
+
+    let mut display = String::with_capacity(decoded.len());
+    let mut characters = decoded.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            'Ｓ' => display.push('\''),
+            'Ｄ' => display.push('"'),
+            '⑲' => display.push('\n'),
+            '⑳' => discard_display_control(&mut characters),
+            '▼' | '│' => {}
+            _ => display.push(character),
+        }
+    }
+    display
 }
 
 fn collect_strings(script: &Script) -> Vec<Vec<u8>> {
@@ -995,6 +1148,205 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
+    fn script_with_texts(texts: &[&[u8]]) -> Script {
+        Script {
+            name: b"conditional_voice_test".to_vec(),
+            functions: vec![Function {
+                name: b"main".to_vec(),
+                operations: texts
+                    .iter()
+                    .map(|text| Operation::String {
+                        command: 0x2f,
+                        value: text.to_vec(),
+                    })
+                    .collect(),
+            }],
+            strings: Vec::new(),
+            exported_labels: Vec::new(),
+            global_variables: Vec::new(),
+        }
+    }
+
+    fn text_sha256(text: &[u8]) -> [u8; 32] {
+        Sha256::digest(text).into()
+    }
+
+    fn contains_voice(script: &Script, symbol: &str) -> bool {
+        let expected = format!(":{symbol}").into_bytes();
+        script
+            .functions
+            .iter()
+            .flat_map(|function| &function.operations)
+            .any(|operation| {
+                matches!(operation, Operation::F4 { first, second: None } if first == &expected)
+            })
+    }
+
+    #[test]
+    fn conditional_voice_injection_accepts_any_reviewed_raw_text_hash() {
+        let raw_text = [0x84, 0xbf, b'!', 0x87, 0x53, b'n'];
+        let mut script = script_with_texts(&[b"First", &raw_text]);
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 1,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"Not this one"), text_sha256(&raw_text)],
+            }])
+            .unwrap();
+
+        assert!(contains_voice(&script, "SE_V0000"));
+        assert_eq!(
+            script.set_text_values(),
+            vec![b"First".as_slice(), &raw_text]
+        );
+    }
+
+    #[test]
+    fn conditional_voice_mismatch_is_a_safe_skip() {
+        let mut script = script_with_texts(&[b"A different translation"]);
+        let original = script.clone();
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 0,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"The reviewed French line")],
+            }])
+            .unwrap();
+
+        assert_eq!(script, original);
+        assert!(!contains_voice(&script, "SE_V0000"));
+    }
+
+    #[test]
+    fn unconditional_targets_and_missing_ordinals_keep_their_existing_behavior() {
+        let mut script = script_with_texts(&[b"Any translation"]);
+        script
+            .inject_voices(&[VoiceTarget {
+                set_text_ordinal: 0,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: Vec::new(),
+            }])
+            .unwrap();
+        assert!(contains_voice(&script, "SE_V0000"));
+
+        let mut script = script_with_texts(&[b"Only ordinal zero exists"]);
+        assert!(matches!(
+            script.inject_voices(&[VoiceTarget {
+                set_text_ordinal: 1,
+                symbol: "SE_V0000".to_owned(),
+                target_text_sha256: vec![text_sha256(b"Anything")],
+            }]),
+            Err(FsbError::MissingSetText(1))
+        ));
+    }
+
+    #[test]
+    fn dialogue_lines_keep_global_context_across_functions() {
+        let script = Script {
+            name: b"context_test".to_vec(),
+            functions: vec![
+                Function {
+                    name: b"opening".to_vec(),
+                    operations: vec![
+                        Operation::String {
+                            command: 0x28,
+                            value: b"Junpei".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"First".to_vec(),
+                        },
+                    ],
+                },
+                Function {
+                    name: b"branch".to_vec(),
+                    operations: vec![
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"Second".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x28,
+                            value: b"Akane".to_vec(),
+                        },
+                        Operation::String {
+                            command: 0x2f,
+                            value: b"Third".to_vec(),
+                        },
+                    ],
+                },
+            ],
+            strings: Vec::new(),
+            exported_labels: Vec::new(),
+            global_variables: Vec::new(),
+        };
+
+        assert_eq!(
+            script.dialogue_lines(),
+            vec![
+                DialogueLine {
+                    ordinal: 0,
+                    function_name: b"opening".to_vec(),
+                    speaker: b"Junpei".to_vec(),
+                    text: b"First".to_vec(),
+                },
+                DialogueLine {
+                    ordinal: 1,
+                    function_name: b"branch".to_vec(),
+                    speaker: b"Junpei".to_vec(),
+                    text: b"Second".to_vec(),
+                },
+                DialogueLine {
+                    ordinal: 2,
+                    function_name: b"branch".to_vec(),
+                    speaker: b"Akane".to_vec(),
+                    text: b"Third".to_vec(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn display_text_decodes_japanese_cp932() {
+        assert_eq!(
+            decode_display_text(&[
+                0x8f, 0x7e, 0x95, 0xbd, b':', 0x82, 0xb1, 0x82, 0xf1, 0x82, 0xc9, 0x82, 0xbf, 0x82,
+                0xcd,
+            ]),
+            "淳平:こんにちは"
+        );
+    }
+
+    #[test]
+    fn display_text_decodes_private_french_glyphs() {
+        let mut raw = Vec::new();
+        for trail in 0xbf..=0xce {
+            raw.extend_from_slice(&[0x84, trail]);
+        }
+        assert_eq!(decode_display_text(&raw), "éèêëàâùûîïôçÇÀÉÊ");
+    }
+
+    #[test]
+    fn display_text_normalizes_punctuation_breaks_and_controls() {
+        let mut raw = vec![0x82, 0x72, 0x82, 0x63, 0x87, 0x52];
+        for control in [
+            b"n".as_slice(),
+            b"N",
+            b"w15.",
+            b"C5",
+            b"s0.",
+            b"F2.",
+            b"f1.",
+        ] {
+            raw.extend_from_slice(&[0x87, 0x53]);
+            raw.extend_from_slice(control);
+        }
+        raw.extend_from_slice(b"Text");
+        raw.extend_from_slice(&[0x81, 0xa5, 0x84, 0xa0]);
+
+        assert_eq!(decode_display_text(&raw), "'\"\nText");
+    }
+
     #[test]
     #[ignore = "requires private script data extracted from a retail ROM"]
     fn retail_script_round_trips_semantically() {
@@ -1028,6 +1380,7 @@ mod tests {
             .map(|row| VoiceTarget {
                 set_text_ordinal: row[ordinal_column].parse().unwrap(),
                 symbol: row[symbol_column].to_string(),
+                target_text_sha256: Vec::new(),
             })
             .collect::<Vec<_>>();
 

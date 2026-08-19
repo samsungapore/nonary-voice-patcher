@@ -6,8 +6,9 @@ explain the user-visible effect, and include the verification you performed.
 ## Ground rules
 
 - Do not upload ROMs, saves, extracted voice audio, PC game archives, voice
-  packs, or additional extracted game payloads. The reviewed alignment inputs
-  under `research/reviews/` are the only versioned review datasets.
+  packs, Dubbing Studio projects, recorded WAV masters, build reports, or
+  additional extracted game payloads. The reviewed alignment inputs under
+  `research/reviews/` are the only versioned review datasets.
 - Write documentation, code comments, commit messages, and public diagnostics
   in English.
 - Comments should explain a constraint, trade-off, or invariant. Avoid comments
@@ -33,7 +34,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
 Fixture-dependent tests are ignored in a clean checkout. If you change the ROM
 engine, also run the private acceptance suite described in
 [docs/TESTING.md](docs/TESTING.md) and summarize the results without publishing
-the fixtures.
+the fixtures. Changes to project, recording, or French-build code must also
+cover the relevant Dubbing Studio acceptance cases without checking in the
+generated project or pack.
 
 ## Pull requests
 
@@ -43,4 +46,5 @@ Include:
 2. tests for new behavior or a reason a test is not practical;
 3. screenshots for interface changes;
 4. updated public contracts when CLI JSON, formats, or compatibility changes;
-5. no generated `dist/`, `target/`, `release/`, ROM, or voice-pack files.
+5. no generated `dist/`, `target/`, `release/`, Dubbing Studio project,
+   recording, build-report, ROM, or voice-pack files.

@@ -11,11 +11,10 @@ import numpy as np
 
 from build_voice_bank import (
     VOICE_LANGUAGE_SPECS,
-    decode_pcm,
-    decrypt_ogg,
+    compose_voice_pcm,
     load_archive_voice_index,
     load_manifest,
-    resolve_voice_records,
+    resolve_voice_components,
 )
 from voice_audio import (
     CHUNK_HEADER_SIZE,
@@ -65,25 +64,25 @@ def main() -> None:
         )
         for index in indices:
             row = rows[index]
-            chunks: list[np.ndarray] = []
-            records = resolve_voice_records(
+            components = resolve_voice_components(
                 row,
                 args.language,
                 manifest=manifest,
                 archive_index=archive_index,
             )
-            resolved_paths = [path for path, _ in records]
+            resolved_paths = [
+                path for component in components for path, _record in component
+            ]
             mapped_paths = row["jp_ogg_paths"].split(" | ")
             if resolved_paths != mapped_paths:
                 raise ValueError(
                     f"voice-map source paths disagree at {row['symbol']}: "
                     f"{mapped_paths!r} vs {resolved_paths!r}"
                 )
-            for _path, record in records:
-                if chunks:
-                    chunks.append(silence)
-                chunks.append(decode_pcm(decrypt_ogg(archive, record)))
-            reference = np.concatenate(chunks).astype(np.int16).tolist()
+            reference_pcm, _used_paths = compose_voice_pcm(
+                archive, row, args.language, components, silence
+            )
+            reference = reference_pcm.astype(np.int16).tolist()
 
             symbol = row["symbol"]
             payload = (args.voice_dir / f"{symbol.lower()}.se").read_bytes()

@@ -27,6 +27,7 @@ const AUX_SIGNATURE_POINTER: u64 = 0x1000;
 pub enum PatchLanguage {
     Japanese,
     English,
+    French,
 }
 
 impl PatchLanguage {
@@ -34,6 +35,7 @@ impl PatchLanguage {
         match self {
             Self::Japanese => "jp",
             Self::English => "en",
+            Self::French => "fr",
         }
     }
 
@@ -41,6 +43,7 @@ impl PatchLanguage {
         match self {
             Self::Japanese => Language::Japanese,
             Self::English => Language::English,
+            Self::French => Language::French,
         }
     }
 
@@ -48,6 +51,7 @@ impl PatchLanguage {
         match self {
             Self::Japanese => PatchedLanguage::Japanese,
             Self::English => PatchedLanguage::English,
+            Self::French => PatchedLanguage::French,
         }
     }
 }
@@ -60,10 +64,11 @@ pub struct ResourcePaths {
 }
 
 impl ResourcePaths {
-    pub fn voicepack(&self, language: PatchLanguage) -> &Path {
+    pub fn voicepack(&self, language: PatchLanguage) -> Option<&Path> {
         match language {
-            PatchLanguage::Japanese => &self.japanese_voicepack,
-            PatchLanguage::English => &self.english_voicepack,
+            PatchLanguage::Japanese => Some(&self.japanese_voicepack),
+            PatchLanguage::English => Some(&self.english_voicepack),
+            PatchLanguage::French => None,
         }
     }
 }
@@ -71,6 +76,7 @@ impl ResourcePaths {
 #[derive(Clone, Debug)]
 pub struct ApplyOptions {
     pub language: PatchLanguage,
+    pub voicepack_override: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -88,6 +94,7 @@ pub enum RomPatchState {
     Clean,
     Japanese,
     English,
+    French,
     LegacyVoicePatch,
     Unsupported,
 }
@@ -150,6 +157,12 @@ pub enum EngineError {
         expected: &'static str,
         actual: &'static str,
     },
+    #[error("invalid French voice pack catalogue: {0}")]
+    VoicePackCatalog(String),
+    #[error("French patches require an explicit voice pack path")]
+    FrenchVoicePackRequired,
+    #[error("the output file must not replace the {resource} resource")]
+    ProtectedOutput { resource: &'static str },
     #[error("payload {path} has an unexpected size ({actual}, expected {expected})")]
     PayloadSize {
         path: String,
@@ -187,15 +200,18 @@ fn read_file(path: &Path) -> Result<Vec<u8>, EngineError> {
 }
 
 fn read_clean_or_restored_base(path: &Path) -> Result<Vec<u8>, EngineError> {
-    match receipt::restore_base(path) {
-        Ok((base, _)) => Ok(base),
-        Err(ReceiptError::NotPatched) => {
-            let metadata = fs::metadata(path).map_err(|error| io_error(path, error))?;
-            if metadata.len() > MAX_ROM_SIZE {
+    let metadata = fs::metadata(path).map_err(|error| io_error(path, error))?;
+    if metadata.len() > MAX_ROM_SIZE {
+        return Err(EngineError::RomTooLarge);
+    }
+    match receipt::locate(path) {
+        Ok(located) => {
+            if located.receipt.original_len > MAX_ROM_SIZE {
                 return Err(EngineError::RomTooLarge);
             }
-            read_file(path)
+            Ok(receipt::restore_base(path)?.0)
         }
+        Err(ReceiptError::NotPatched) => read_file(path),
         Err(error) => Err(error.into()),
     }
 }
@@ -244,17 +260,22 @@ pub fn inspect_rom(
 ) -> Result<RomInfo, EngineError> {
     let path = path.as_ref();
     let metadata = fs::metadata(path).map_err(|error| io_error(path, error))?;
-    let digest = sha256_file(path)?;
+    if metadata.len() > MAX_ROM_SIZE {
+        return Err(EngineError::RomTooLarge);
+    }
     let located = match receipt::locate(path) {
         Ok(value) => Some(value),
         Err(ReceiptError::NotPatched) => None,
         Err(error) => return Err(error.into()),
     };
-    let base = if located.is_some() {
-        receipt::restore_base(path)?.0
-    } else {
-        read_file(path)?
-    };
+    if located
+        .as_ref()
+        .is_some_and(|value| value.receipt.original_len > MAX_ROM_SIZE)
+    {
+        return Err(EngineError::RomTooLarge);
+    }
+    let digest = sha256_file(path)?;
+    let base = read_clean_or_restored_base(path)?;
     let parsed = NdsRom::parse(&base);
     let (title, game_code, has_legacy_voice, profile_result) = match parsed {
         Ok(ref rom) => {
@@ -284,6 +305,7 @@ pub fn inspect_rom(
         let state = match located.receipt.language {
             PatchedLanguage::Japanese => RomPatchState::Japanese,
             PatchedLanguage::English => RomPatchState::English,
+            PatchedLanguage::French => RomPatchState::French,
         };
         let compatible = profile_result.is_ok();
         (
@@ -400,9 +422,8 @@ fn build_replacements(
     Ok(replacements)
 }
 
-fn ensure_distinct_paths(input: &Path, output: &Path) -> Result<(), EngineError> {
-    let input = fs::canonicalize(input).map_err(|error| io_error(input, error))?;
-    let output_absolute = if output.exists() {
+fn canonical_output_path(output: &Path) -> Result<PathBuf, EngineError> {
+    let absolute = if output.exists() {
         fs::canonicalize(output).map_err(|error| io_error(output, error))?
     } else {
         let parent = output.parent().unwrap_or_else(|| Path::new("."));
@@ -413,8 +434,27 @@ fn ensure_distinct_paths(input: &Path, output: &Path) -> Result<(), EngineError>
                 .ok_or_else(|| io_error(output, io::Error::other("missing output filename")))?,
         )
     };
+    Ok(absolute)
+}
+
+fn ensure_distinct_paths(input: &Path, output: &Path) -> Result<(), EngineError> {
+    let input = fs::canonicalize(input).map_err(|error| io_error(input, error))?;
+    let output_absolute = canonical_output_path(output)?;
     if input == output_absolute {
         Err(EngineError::SameInputOutput)
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_output_does_not_replace_resource(
+    output: &Path,
+    resource: &Path,
+    label: &'static str,
+) -> Result<(), EngineError> {
+    let resource = fs::canonicalize(resource).map_err(|error| io_error(resource, error))?;
+    if resource == canonical_output_path(output)? {
+        Err(EngineError::ProtectedOutput { resource: label })
     } else {
         Ok(())
     }
@@ -487,6 +527,47 @@ fn original_signature(base: &[u8]) -> [u8; SIGNATURE_SIZE as usize] {
     signature
 }
 
+fn voicepack_path<'a>(
+    resources: &'a ResourcePaths,
+    options: &'a ApplyOptions,
+) -> Result<&'a Path, EngineError> {
+    options
+        .voicepack_override
+        .as_deref()
+        .or_else(|| resources.voicepack(options.language))
+        .ok_or(EngineError::FrenchVoicePackRequired)
+}
+
+fn ensure_voicepack_language(expected: PatchLanguage, actual: Language) -> Result<(), EngineError> {
+    if actual == expected.voicepack_language() {
+        Ok(())
+    } else {
+        Err(EngineError::VoicePackLanguage {
+            expected: expected.code(),
+            actual: actual.code(),
+        })
+    }
+}
+
+fn ensure_voicepack_catalog(
+    language: PatchLanguage,
+    expected: [u8; 32],
+    actual: Option<[u8; 32]>,
+) -> Result<(), EngineError> {
+    if language != PatchLanguage::French {
+        return Ok(());
+    }
+    match actual {
+        Some(actual) if actual == expected => Ok(()),
+        Some(_) => Err(EngineError::VoicePackCatalog(
+            "the French voice pack targets a different voice catalogue".to_owned(),
+        )),
+        None => Err(EngineError::VoicePackCatalog(
+            "the French voice pack is not bound to a voice catalogue".to_owned(),
+        )),
+    }
+}
+
 pub fn apply_patch(
     input: impl AsRef<Path>,
     output: impl AsRef<Path>,
@@ -497,6 +578,9 @@ pub fn apply_patch(
     let input = input.as_ref();
     let output = output.as_ref();
     ensure_distinct_paths(input, output)?;
+    let voicepack_path = voicepack_path(resources, options)?;
+    ensure_output_does_not_replace_resource(output, &resources.profile, "voice profile")?;
+    ensure_output_does_not_replace_resource(output, voicepack_path, "selected voice pack")?;
     emit(
         &mut progress,
         "read",
@@ -519,13 +603,8 @@ pub fn apply_patch(
     }
     let profile = load_profile(&resources.profile)?;
     profile.validate_rom(&rom)?;
-    let voicepack = VoicePack::open(resources.voicepack(options.language))?;
-    if voicepack.language() != options.language.voicepack_language() {
-        return Err(EngineError::VoicePackLanguage {
-            expected: options.language.code(),
-            actual: voicepack.language().code(),
-        });
-    }
+    let voicepack = VoicePack::open(voicepack_path)?;
+    ensure_voicepack_language(options.language, voicepack.language())?;
     if voicepack.entries().len() != profile.voice_count {
         return Err(EngineError::Verification(format!(
             "{} voices in the pack, {} in the profile",
@@ -533,6 +612,11 @@ pub fn apply_patch(
             profile.voice_count
         )));
     }
+    ensure_voicepack_catalog(
+        options.language,
+        profile.catalog_sha256(),
+        voicepack.catalog_sha256(),
+    )?;
     emit(
         &mut progress,
         "scripts",
@@ -770,6 +854,10 @@ pub fn reset_patch(
     let input = input.as_ref();
     let output = output.as_ref();
     ensure_distinct_paths(input, output)?;
+    let metadata = fs::metadata(input).map_err(|error| io_error(input, error))?;
+    if metadata.len() > MAX_ROM_SIZE {
+        return Err(EngineError::RomTooLarge);
+    }
     emit(
         &mut progress,
         "read",
@@ -825,6 +913,87 @@ mod tests {
             japanese_voicepack: resource_dir.join("voices-jp.nvpack"),
             english_voicepack: resource_dir.join("voices-en.nvpack"),
         }
+    }
+
+    #[test]
+    fn french_requires_an_explicit_pack_and_validates_its_language() {
+        let resources = resources();
+        let missing = ApplyOptions {
+            language: PatchLanguage::French,
+            voicepack_override: None,
+        };
+        assert!(matches!(
+            voicepack_path(&resources, &missing),
+            Err(EngineError::FrenchVoicePackRequired)
+        ));
+
+        let custom_pack = PathBuf::from("studio/exports/voices-fr.nvpack");
+        let explicit = ApplyOptions {
+            language: PatchLanguage::French,
+            voicepack_override: Some(custom_pack.clone()),
+        };
+        assert_eq!(voicepack_path(&resources, &explicit).unwrap(), custom_pack);
+        assert!(ensure_voicepack_language(PatchLanguage::French, Language::French).is_ok());
+        assert!(matches!(
+            ensure_voicepack_language(PatchLanguage::French, Language::English),
+            Err(EngineError::VoicePackLanguage {
+                expected: "fr",
+                actual: "en"
+            })
+        ));
+        let catalog = [0x42; 32];
+        assert!(ensure_voicepack_catalog(PatchLanguage::French, catalog, Some(catalog)).is_ok());
+        assert!(ensure_voicepack_catalog(PatchLanguage::Japanese, catalog, None).is_ok());
+        assert!(matches!(
+            ensure_voicepack_catalog(PatchLanguage::French, catalog, None),
+            Err(EngineError::VoicePackCatalog(_))
+        ));
+        assert!(matches!(
+            ensure_voicepack_catalog(PatchLanguage::French, catalog, Some([0x24; 32])),
+            Err(EngineError::VoicePackCatalog(_))
+        ));
+    }
+
+    #[test]
+    fn patch_output_cannot_replace_a_required_resource() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("voice-profile.json");
+        let voicepack = directory.path().join("voices-fr.nvpack");
+        fs::write(&output, b"profile").unwrap();
+        fs::write(&voicepack, b"pack").unwrap();
+
+        assert!(matches!(
+            ensure_output_does_not_replace_resource(&output, &output, "voice profile"),
+            Err(EngineError::ProtectedOutput {
+                resource: "voice profile"
+            })
+        ));
+        assert!(matches!(
+            ensure_output_does_not_replace_resource(&voicepack, &voicepack, "selected voice pack"),
+            Err(EngineError::ProtectedOutput {
+                resource: "selected voice pack"
+            })
+        ));
+    }
+
+    #[test]
+    fn rom_operations_reject_oversized_physical_files_before_reading_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("oversized.nds");
+        let output = directory.path().join("restored.nds");
+        File::create(&input)
+            .unwrap()
+            .set_len(MAX_ROM_SIZE + 1)
+            .unwrap();
+
+        assert!(matches!(
+            inspect_rom(&input, &resources()),
+            Err(EngineError::RomTooLarge)
+        ));
+        assert!(matches!(
+            reset_patch(&input, &output, |_| {}),
+            Err(EngineError::RomTooLarge)
+        ));
     }
 
     #[test]
@@ -945,11 +1114,14 @@ mod tests {
                 &input,
                 &patched,
                 &resources(),
-                &ApplyOptions { language },
+                &ApplyOptions {
+                    language,
+                    voicepack_override: None,
+                },
                 |_| {},
             )
             .unwrap();
-            assert_eq!(result.voices, 6_414);
+            assert_eq!(result.voices, 6_475);
             let patched_data = fs::read(&patched).unwrap();
             assert_french_texts_and_exact_repairs_preserved(&base_data, &patched_data, &profile);
             let patched_info = inspect_rom(&patched, &resources()).unwrap();
@@ -958,6 +1130,7 @@ mod tests {
                 match language {
                     PatchLanguage::Japanese => RomPatchState::Japanese,
                     PatchLanguage::English => RomPatchState::English,
+                    PatchLanguage::French => RomPatchState::French,
                 }
             );
             assert!(patched_info.compatible);
@@ -980,11 +1153,12 @@ mod tests {
             &resources(),
             &ApplyOptions {
                 language: PatchLanguage::Japanese,
+                voicepack_override: None,
             },
             |_| {},
         )
         .unwrap();
-        assert_eq!(result.voices, 6_414);
+        assert_eq!(result.voices, 6_475);
         assert_eq!(
             inspect_rom(&patched, &resources()).unwrap().state,
             RomPatchState::Japanese

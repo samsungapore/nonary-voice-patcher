@@ -12,6 +12,11 @@ from pathlib import Path
 
 import ndspy.rom
 
+from apply_reviewed_alignment_overrides import (
+    ReviewedOverride,
+    overrides_from_runtime_row,
+    validate_overrides,
+)
 from silence_text_bleeps import BleepPatchError, parse_bank
 from sound_registry import DEFAULT_SE_CATEGORY, validate_registry
 from voice_audio import read_dse_internal_id, validate_se
@@ -53,7 +58,8 @@ def read_voice_map(path: Path) -> tuple[list[dict[str, str]], list[str], list[in
 
     identifiers: list[int] = []
     seen_ids: set[int] = set()
-    seen_messages: set[str] = set()
+    message_rows: dict[str, list[dict[str, str]]] = defaultdict(list)
+    reviewed_overrides: list[ReviewedOverride] = []
     target_lines: set[tuple[str, int]] = set()
     target_ordinals: set[tuple[str, int]] = set()
     for row_number, row in enumerate(rows, start=2):
@@ -93,12 +99,14 @@ def read_voice_map(path: Path) -> tuple[list[dict[str, str]], list[str], list[in
             )
         if len(message_ids) != len(set(message_ids)):
             raise ValueError(f"voice-map row {row_number} repeats a PC message")
-        duplicates = seen_messages.intersection(message_ids)
-        if duplicates:
-            raise ValueError(
-                f"voice-map row {row_number} reuses PC message {sorted(duplicates)[0]}"
+        normalized = dict(row)
+        normalized["pc_message_id"] = " | ".join(message_ids)
+        if row.get("alignment_method", "").strip().casefold() == "reviewed_override":
+            reviewed_overrides.extend(
+                overrides_from_runtime_row(normalized, row_number)
             )
-        seen_messages.update(message_ids)
+        for message_id in message_ids:
+            message_rows[message_id].append(normalized)
 
         script = Path(row["ds_script"]).name.casefold()
         if not script:
@@ -118,6 +126,21 @@ def read_voice_map(path: Path) -> tuple[list[dict[str, str]], list[str], list[in
             raise ValueError(f"voice-map row {row_number} duplicates a DS target")
         target_lines.add(line_target)
         target_ordinals.add(ordinal_target)
+    if reviewed_overrides:
+        validate_overrides(reviewed_overrides)
+    for message_id, usages in message_rows.items():
+        if len(usages) == 1:
+            continue
+        if any(
+            row.get("alignment_method", "").strip().casefold() != "reviewed_override"
+            for row in usages
+        ):
+            raise ValueError(f"voice map reuses PC message {message_id}")
+        groups = {row.get("reviewed_override_group", "") for row in usages}
+        if len(groups) != 1 or not next(iter(groups)):
+            raise ValueError(
+                f"voice map reuses PC message {message_id} outside one reviewed split group"
+            )
     return rows, expected_symbols, identifiers
 
 
@@ -305,8 +328,7 @@ def main() -> None:
     print(f"voices={len(rows)}")
     print(f"pc_messages={sum(int(row['message_count']) for row in rows)}")
     print(
-        "grouped_voice_resources="
-        f"{sum(int(row['message_count']) > 1 for row in rows)}"
+        f"grouped_voice_resources={sum(int(row['message_count']) > 1 for row in rows)}"
     )
     print(f"voice_bytes={total_voice_bytes}")
     print(f"scripts={len(scripts)}")

@@ -16,6 +16,7 @@ ALIGNMENT = PROJECT_ROOT / "research" / "alignment" / "final_voice_alignment.tsv
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from merge_extended_alignment import policy_allows  # noqa: E402
+from apply_reviewed_alignment_overrides import read_overrides  # noqa: E402
 
 
 def read_rows(name: str) -> list[dict[str, str]]:
@@ -33,10 +34,10 @@ class ReviewLedgerTests(unittest.TestCase):
             reader = csv.DictReader(source, delimiter="\t")
             fields = set(reader.fieldnames or ())
             rows = list(reader)
-        self.assertEqual(len(rows), 6_414)
+        self.assertEqual(len(rows), 6_475)
         self.assertEqual(
             hashlib.sha256(ALIGNMENT.read_bytes()).hexdigest(),
-            "192246fefa8ab2e08fe13c3fc518f0792a2f15431c4d5072680bfccb3a9a0cbd",
+            "c1c1f6fdd9100c6fb7f1e88e43ccb2473ea4becb3c9402da9c7abf43b0367acc",
         )
         self.assertTrue(
             {
@@ -49,6 +50,38 @@ class ReviewLedgerTests(unittest.TestCase):
         )
         self.assertTrue({"ds_text", "pc_en_text"}.isdisjoint(fields))
         self.assertTrue(all(row["selection_status"] == "selected" for row in rows))
+        self.assertTrue(
+            all(
+                not line.endswith(b"\t") for line in ALIGNMENT.read_bytes().splitlines()
+            )
+        )
+
+    def test_reviewed_override_ledger_is_complete_and_hash_pinned(self) -> None:
+        path = REVIEWS / "reviewed_alignment_overrides.tsv"
+        overrides = read_overrides(path)
+        self.assertEqual(len(overrides), 65)
+        self.assertEqual(
+            len({(row.ds_script, row.ds_settext_ordinal) for row in overrides}),
+            63,
+        )
+        self.assertEqual(
+            Counter(row.review_basis for row in overrides),
+            Counter(
+                {
+                    "multi_page_split": 46,
+                    "speaker_alias": 11,
+                    "multi_page_composite": 7,
+                    "translated_dialogue": 1,
+                }
+            ),
+        )
+        self.assertEqual(
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            "abee0b504ab42e85e165b2e131b9d7c7cc2be687a17b129990f3406e53bf6f6a",
+        )
+        self.assertTrue(
+            all(not line.endswith(b"\t") for line in path.read_bytes().splitlines())
+        )
 
     def test_tracked_ledgers_match_the_reviewed_inputs(self) -> None:
         expected = {
@@ -77,9 +110,12 @@ class ReviewLedgerTests(unittest.TestCase):
     def test_extended_ledger_preserves_the_seventeen_dialogue_additions(self) -> None:
         rows = read_rows("alignment_extended_candidates.tsv")
         self.assertTrue(
-            {"ds_text", "pc_en_text", "pc_jp_speaker_and_text", "review_reason"}.isdisjoint(
-                rows[0]
-            )
+            {
+                "ds_text",
+                "pc_en_text",
+                "pc_jp_speaker_and_text",
+                "review_reason",
+            }.isdisjoint(rows[0])
         )
         accepted = [row for row in rows if policy_allows(row, "same")]
         self.assertEqual(len(accepted), 17)

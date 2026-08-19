@@ -1,0 +1,66 @@
+override_group	component_order	target_action	replace_pc_message_id	pc_message_id	ds_script	ds_settext_ordinal	ds_speaker	pc_speaker	target_text_sha256	jp_start_ms	jp_end_ms	en_start_ms	en_end_ms	review_basis
+alias_a01e_dancer	0	add		A01e_020_080_01_00	a01e.fsb.txt	41	踊り子２	踊り子						speaker_alias
+split_a11d_010_030	0	add		A11d_010_030_02_10	a11d.fsb.txt	8	ゼロ	ゼロ		0	6845	0	7910	multi_page_split
+split_a11d_010_030	0	add		A11d_010_030_02_10	a11d.fsb.txt	9	ゼロ	ゼロ		6845		7910		multi_page_split
+split_a11d_010_321	0	add		A11d_010_321_04_10	a11d.fsb.txt	132	紫	紫		0	4005	0	2858	multi_page_split
+split_a11d_010_321	0	add		A11d_010_321_04_10	a11d.fsb.txt	133	紫	紫		4005		2858		multi_page_split
+split_a12d_010_190	0	add		A12d_010_190_03_10	a12d.fsb.txt	81	淳平	淳平		0	2112	0	2509	multi_page_split
+split_a12d_010_190	0	add		A12d_010_190_03_10	a12d.fsb.txt	82	淳平	淳平		2112		2509		multi_page_split
+split_a12d_010_220_02	0	add		A12d_010_220_02_10	a12d.fsb.txt	93	淳平	淳平		0	3345	0	1820	multi_page_split
+split_a12d_010_220_02	0	add		A12d_010_220_02_10	a12d.fsb.txt	94	淳平	淳平		3345		1820		multi_page_split
+split_a12d_010_220_04	0	add		A12d_010_220_04_10	a12d.fsb.txt	95	淳平	淳平		0	3915	0	3365	multi_page_split
+split_a12d_010_220_04	0	add		A12d_010_220_04_10	a12d.fsb.txt	96	淳平	淳平		3915		3365		multi_page_split
+split_a21b_010_150	0	add		A21b_010_150_02_10	a21b.fsb.txt	62	セブン	セブン		0	3518	0	2250	multi_page_split
+split_a21b_010_150	0	add		A21b_010_150_02_10	a21b.fsb.txt	63	セブン	セブン		3518		2250		multi_page_split
+split_a21d_010_190	0	add		A21d_010_190_02_10	a21d.fsb.txt	71	セブン	セブン		0	2432	0	1983	multi_page_split
+split_a21d_010_190	0	add		A21d_010_190_02_10	a21d.fsb.txt	72	セブン	セブン		2432		1983		multi_page_split
+split_a21d_010_280	0	add		A21d_010_280_04_10	a21d.fsb.txt	109	セブン	セブン		0	2780	0	2245	multi_page_split
+split_a21d_010_280	0	add		A21d_010_280_04_10	a21d.fsb.txt	110	セブン	セブン		2780		2245		multi_page_split
+split_a21d_010_440	0	add		A21d_010_440_03_10	a21d.fsb.txt	169	セブン	セブン		0	4065	0	2015	multi_page_split
+split_a21d_010_440	0	add		A21d_010_440_03_10	a21d.fsb.txt	170	セブン	セブン		4065		2015		multi_page_split
+split_a21d_010_520	0	add		A21d_010_520_04_10	a21d.fsb.txt	203	紫	紫		0	4103	0	2978	multi_page_split
+split_a21d_010_520	0	add		A21d_010_520_04_10	a21d.fsb.txt	204	紫	紫		4103		2978		multi_page_split
+split_a21d_020_140	0	add		A21d_020_140_03_10	a21d.fsb.txt	306	淳平	淳平		0	4320	0	2872	multi_page_split
+split_a21d_020_140	0	add		A21d_020_140_03_10	a21d.fsb.txt	307	淳平	淳平		4385		2937		multi_page_split
+split_a32d_020_110	0	add		A32d_020_110_06_10	a32d.fsb.txt	180	淳平	淳平		0	5550	0	3780	multi_page_split
+split_a32d_020_110	0	add		A32d_020_110_06_10	a32d.fsb.txt	181	淳平	淳平		5550		3780		multi_page_split
+split_a32d_020_630	0	add		A32d_020_630_02_10	a32d.fsb.txt	373	四葉	四葉		0	6670	0	3280	multi_page_split
+split_a32d_020_630	0	add		A32d_020_630_02_10	a32d.fsb.txt	374	四葉	四葉		6670		3280		multi_page_split
+split_a41d_010_540	0	add		A41d_010_540_03_10	a41d.fsb.txt	163	ニルス２	ニルス２		0	2223	0	4550	multi_page_composite
+split_a41d_010_540	0	replace	A41d_010_540_03_20	A41d_010_540_03_10	a41d.fsb.txt	164	ニルス２	ニルス２		2223		4550		multi_page_composite
+split_a41d_010_540	1	replace	A41d_010_540_03_20	A41d_010_540_03_20	a41d.fsb.txt	164	ニルス２	ニルス２		0		0		multi_page_composite
+split_aed1_030_260	0	add		Aed1_030_260_02_10	aed1.fsb.txt	200	ニルス２	ニルス２		0	3850	0	3768	multi_page_split
+split_aed1_030_260	0	add		Aed1_030_260_02_10	aed1.fsb.txt	201	ニルス２	ニルス２		3850		3768		multi_page_split
+split_aed1_030_510	0	add		Aed1_030_510_03_10	aed1.fsb.txt	276	一宮	一宮		0	4378	0	2188	multi_page_composite
+split_aed1_030_510	0	add		Aed1_030_510_03_10	aed1.fsb.txt	277	一宮	一宮		4378		2188		multi_page_composite
+split_aed1_030_510	1	add		Aed1_030_520_02_10	aed1.fsb.txt	277	一宮	一宮		0	2122	0	2412	multi_page_composite
+split_aed1_030_510	0	replace	Aed1_030_520_02_10	Aed1_030_520_02_10	aed1.fsb.txt	278	一宮	一宮		2122		2412		multi_page_composite
+split_b11b_010_060	0	add		B11b_010_060_04_10	b11b.fsb.txt	21	ニルス	ニルス		0	3428	0	1848	multi_page_split
+split_b11b_010_060	0	add		B11b_010_060_04_10	b11b.fsb.txt	22	ニルス	ニルス		3428		1848		multi_page_split
+split_b11d_010_060	0	add		B11d_010_060_02_10	b11d.fsb.txt	16	ニルス	ニルス		0	3080	0	3850	multi_page_split
+split_b11d_010_060	0	add		B11d_010_060_02_10	b11d.fsb.txt	17	ニルス	ニルス		3080		3850		multi_page_split
+split_b12e_030_180	0	add		B12e_030_180_02_10	b12e.fsb.txt	112	淳平	淳平		0	5600	0	2923	multi_page_split
+split_b12e_030_180	0	add		B12e_030_180_02_10	b12e.fsb.txt	113	淳平	淳平		5600		2923		multi_page_split
+split_b21b_010_140	0	add		B21b_010_140_02_10	b21b.fsb.txt	62	セブン	セブン		0	3518	0	2250	multi_page_split
+split_b21b_010_140	0	add		B21b_010_140_02_10	b21b.fsb.txt	63	セブン	セブン		3518		2250		multi_page_split
+split_b21d_010_210	0	add		B21d_010_210_04_10	b21d.fsb.txt	124	八代	八代		0	4655	0	5150	multi_page_split
+split_b21d_010_210	0	add		B21d_010_210_04_10	b21d.fsb.txt	125	八代	八代		4655		5150		multi_page_split
+split_b31d_010_070	0	add		B31d_010_070_02_10	b31d.fsb.txt	16	サンタ	サンタ		0	3360	0	2330	multi_page_split
+split_b31d_010_070	0	add		B31d_010_070_02_10	b31d.fsb.txt	17	サンタ	サンタ		3360		2330		multi_page_split
+split_b32b_030_190	0	add		B32b_030_190_08_10	b32b.fsb.txt	109	サンタ	サンタ		0	2200	0	3165	multi_page_split
+split_b32b_030_190	0	add		B32b_030_190_08_10	b32b.fsb.txt	110	サンタ	サンタ		2200		3165		multi_page_split
+alias_bed4_9th_man_01	0	add		Bed4_010_120_01_00	bed4.fsb.txt	37	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_02	0	add		Bed4_010_120_02_00	bed4.fsb.txt	38	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_03	0	add		Bed4_010_130_01_00	bed4.fsb.txt	39	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_04	0	add		Bed4_010_130_02_00	bed4.fsb.txt	40	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_05	0	add		Bed4_010_130_03_00	bed4.fsb.txt	41	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_06	0	add		Bed4_010_130_04_00	bed4.fsb.txt	42	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_07	0	add		Bed4_010_131_01_00	bed4.fsb.txt	43	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_08	0	add		Bed4_010_131_02_00	bed4.fsb.txt	44	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_09	0	add		Bed4_010_131_03_00	bed4.fsb.txt	45	９の男	鳥の巣						speaker_alias
+alias_bed4_9th_man_10	0	add		Bed4_010_131_04_00	bed4.fsb.txt	46	９の男	鳥の巣						speaker_alias
+split_c31d_010_090	0	add		C31d_010_090_02_10	c31d.fsb.txt	77	淳平	淳平		0	3625	0	2150	multi_page_split
+split_c31d_010_090	0	add		C31d_010_090_02_10	c31d.fsb.txt	78	淳平	淳平		3625		2150		multi_page_split
+translation_m10a_110_190	0	add		M10a_110_190_01_10	m10a.fsb.txt	563	淳平	淳平	fe5b2a5d2a4b667e5fbbde4560b75964a899dfbdefc2e30d53fe7177a436b28f					translated_dialogue
+split_m40a_030_020	0	add		M40a_030_020_03_10	m40a.fsb.txt	121	セブン	セブン		0	5550	0	3470	multi_page_split
+split_m40a_030_020	0	add		M40a_030_020_03_10	m40a.fsb.txt	122	セブン	セブン		5550		3470		multi_page_split

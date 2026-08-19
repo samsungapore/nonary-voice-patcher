@@ -99,10 +99,42 @@ The final merge reran the accepted set with `--speaker-policy same`:
 | --- | ---: | ---: | --- |
 | Safe baseline | 6,397 | — | Named-speaker safe set |
 | Broad experiment | 6,961 | 564 | Same + `NOVEL` semantic |
-| Released profile | 6,414 | 17 | Exact same speaker only |
+| Conservative dialogue baseline | 6,414 | 17 | Exact same speaker only |
+| Production profile | 6,475 | 61 net | Exact reviewed targets; no narration |
 
-The 17 additions are reviewed named-character dialogue. No `NOVEL` or `HERO`
-target is permitted in the released voice bank.
+The first 17 additions are reviewed named-character dialogue. No `NOVEL` or
+`HERO` target is permitted in the production voice bank.
+
+## Reviewed dialogue overrides
+
+Some voiced PC messages span two consecutive DS text boxes, and a few speaker
+labels differ without changing the character. These cases cannot be accepted
+by weakening the automatic matcher globally. They are recorded instead in
+`research/reviews/reviewed_alignment_overrides.tsv` as exact PC-message and DS
+target pairs.
+
+The ledger contains 65 ordered components for 63 DS targets. Two targets
+replace an existing baseline assignment, so applying the ledger to the 6,414
+target conservative baseline produces 6,475 targets. Its reviewed cases are:
+
+- 25 groups in which one voiced PC message spans consecutive DS text boxes;
+- two composite targets, in A41d and Aed1, assembled from ordered pieces of
+  more than one PC message;
+- ten Bed4 speaker-label equivalents and one A01 dancer-label equivalent;
+- one M10 target enabled only when the raw `setText` payload matches the
+  reviewed French translation.
+
+Japanese and English use separate millisecond boundaries. The builder converts
+each boundary to a deterministic 16,384 Hz sample index, applies a 4 ms fade
+only at newly cut edges, and inserts 65 ms of silence between components of a
+composite target. Audio without a reviewed cut remains byte-identical before DS
+encoding.
+
+The override stage stops on an unknown target, changed speaker, missing PC
+message, occupied add target, unexpected replacement, non-consecutive reuse,
+overlapping interval, or malformed raw-text hash. Speaker equivalents are tied
+to one exact target and message; the pipeline never removes numeric suffixes
+from speaker names globally.
 
 ## Reproducing the reports
 

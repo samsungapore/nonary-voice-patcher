@@ -209,6 +209,43 @@ button:disabled { cursor: not-allowed; opacity: 0.42; }
   text-transform: uppercase;
 }
 
+.workspace-navigation {
+  display: grid;
+  margin-top: 26px;
+  gap: 7px;
+}
+
+.workspace-navigation button {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 1px solid rgba(82, 119, 128, 0.52);
+  border-radius: 2px;
+  color: #91a8ad;
+  background: rgba(4, 11, 14, 0.86);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+  text-align: left;
+}
+
+.workspace-navigation button:hover:not(:disabled) {
+  border-color: var(--cyan-line);
+  color: #fff;
+}
+
+.workspace-navigation button[aria-current="page"] {
+  border-color: var(--cyan);
+  color: #eefbfc;
+  background: var(--cyan-soft);
+  box-shadow: inset 3px 0 var(--cyan);
+}
+
+.workspace-navigation svg { flex: 0 0 auto; color: var(--cyan); }
+.workspace-navigation span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .utility-actions {
   display: grid;
   margin-top: auto;
@@ -242,6 +279,19 @@ button:disabled { cursor: not-allowed; opacity: 0.42; }
   overflow-x: hidden;
   overflow-y: auto;
   background: #071014;
+}
+
+.app-stage.is-studio {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-stage.is-studio > .dubbing-studio {
+  height: auto;
+  flex: 1;
 }
 
 .topbar {
