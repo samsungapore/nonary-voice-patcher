@@ -26,6 +26,11 @@ pub fn run() {
             commands::cancel_dubbing_recording,
             commands::read_dubbing_take,
             commands::select_dubbing_take,
+            commands::analyze_dubbing_level,
+            commands::update_dubbing_processing,
+            commands::read_dubbing_processed_preview,
+            commands::read_dubbing_reference_preview,
+            commands::match_all_dubbing_levels,
             commands::build_dubbing_test_rom,
         ])
         .run(tauri::generate_context!())

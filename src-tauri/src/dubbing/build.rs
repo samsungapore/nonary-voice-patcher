@@ -22,7 +22,8 @@ use crate::patcher::{
     voicepack::{Language, VoicePack, VoicePackError},
 };
 
-const SAMPLE_RATE: u32 = 16_384;
+pub(crate) const SAMPLE_RATE: u32 = 16_384;
+pub(crate) const PCM_CLAMP_LIMIT: f64 = 0.999_969;
 const TEMPLATE_PATH: &str = "sound/se_a01b_wake.se";
 const TEMPLATE_INTERNAL_ID: u16 = 0x6604;
 const PREVIEW_SILENCE_MS: u64 = 80;
@@ -402,12 +403,12 @@ impl AudioConverter {
         Ok(output[delay..delay + output_length].to_vec())
     }
 
-    fn decode_master(
+    fn decode_master_source(
         &mut self,
         path: &Path,
         take: &TakeMetadata,
         target: &TargetProgress,
-    ) -> Result<(Vec<i16>, u64), BuildError> {
+    ) -> Result<Vec<f64>, BuildError> {
         let source = read_limited_regular_file(path, MAX_WAV_BYTES)?;
         if source.is_empty() {
             return Err(BuildError::Wav {
@@ -494,27 +495,8 @@ impl AudioConverter {
                 message: "trim range removes the complete recording".to_owned(),
             });
         }
-        if !target.gain_db.is_finite() || !(-60.0..=24.0).contains(&target.gain_db) {
-            return Err(BuildError::Wav {
-                path: path.to_owned(),
-                message: format!("gain {} dB is outside -60..24 dB", target.gain_db),
-            });
-        }
         let end = converted.len() - trim_end;
-        let gain = 10_f64.powf(f64::from(target.gain_db) / 20.0);
-        let gained = converted[trim_start..end]
-            .iter()
-            .map(|sample| sample * gain)
-            .collect::<Vec<_>>();
-        let clipped_samples = gained
-            .iter()
-            .filter(|sample| sample.abs() > 0.999_969)
-            .count() as u64;
-        let result = gained
-            .iter()
-            .map(|sample| sample.clamp(-0.999_969, 0.999_969) * f64::from(i16::MAX))
-            .map(|sample| sample.round_ties_even() as i16)
-            .collect::<Vec<_>>();
+        let result = converted[trim_start..end].to_vec();
         let duration_ms = result.len() as u64 * 1_000 / u64::from(SAMPLE_RATE);
         if result.is_empty() || duration_ms > MAX_DURATION_MS {
             return Err(BuildError::Wav {
@@ -522,8 +504,69 @@ impl AudioConverter {
                 message: format!("duration after trimming is {duration_ms} ms"),
             });
         }
-        Ok((result, clipped_samples))
+        Ok(result)
     }
+
+    fn decode_master(
+        &mut self,
+        path: &Path,
+        take: &TakeMetadata,
+        target: &TargetProgress,
+    ) -> Result<(Vec<i16>, u64), BuildError> {
+        let source = self.decode_master_source(path, take, target)?;
+        apply_gain_to_source(&source, target.gain_db)
+    }
+}
+
+pub(crate) fn apply_gain_to_source(
+    source: &[f64],
+    gain_db: f32,
+) -> Result<(Vec<i16>, u64), BuildError> {
+    if !gain_db.is_finite() || !(-60.0..=24.0).contains(&gain_db) {
+        return Err(BuildError::Invalid(format!(
+            "gain {gain_db} dB is outside -60..24 dB"
+        )));
+    }
+    let gain = 10_f64.powf(f64::from(gain_db) / 20.0);
+    let gained = source
+        .iter()
+        .map(|sample| sample * gain)
+        .collect::<Vec<_>>();
+    let clipped_samples = gained
+        .iter()
+        .filter(|sample| sample.abs() > PCM_CLAMP_LIMIT)
+        .count() as u64;
+    let result = gained
+        .iter()
+        .map(|sample| sample.clamp(-PCM_CLAMP_LIMIT, PCM_CLAMP_LIMIT) * f64::from(i16::MAX))
+        .map(|sample| sample.round_ties_even() as i16)
+        .collect::<Vec<_>>();
+    Ok((result, clipped_samples))
+}
+
+pub(crate) fn render_active_take_source(
+    project_dir: &Path,
+    symbol: &str,
+    target: &TargetProgress,
+) -> Result<Vec<f64>, BuildError> {
+    let take = active_take(target).ok_or_else(|| {
+        BuildError::Invalid(format!("target {symbol} does not select an active take"))
+    })?;
+    let path = safe_take_path(project_dir, &take.file)?;
+    verify_take_file(&path, take)?;
+    AudioConverter::new().decode_master_source(&path, take, target)
+}
+
+pub(crate) fn render_active_take_pcm(
+    project_dir: &Path,
+    symbol: &str,
+    target: &TargetProgress,
+    apply_gain: bool,
+) -> Result<Vec<i16>, BuildError> {
+    let source = render_active_take_source(project_dir, symbol, target)?;
+    let gain_db = if apply_gain { target.gain_db } else { 0.0 };
+    let (pcm, _clipped_samples) = apply_gain_to_source(&source, gain_db)?;
+    Ok(pcm)
 }
 
 fn read_dse_internal_id(data: &[u8], source: &str) -> Result<u16, BuildError> {
@@ -1068,6 +1111,45 @@ fn encode_ima_adpcm(samples: &[i16]) -> Result<Vec<u8>, BuildError> {
     Ok(result)
 }
 
+fn decode_ima_adpcm(adpcm: &[u8]) -> Result<Vec<i16>, BuildError> {
+    if adpcm.len() < ADPCM_PREAMBLE_SIZE || !adpcm.len().is_multiple_of(4) {
+        return Err(BuildError::Voice(
+            "DS IMA ADPCM must contain a predictor preamble and complete 32-bit blocks".to_owned(),
+        ));
+    }
+    let mut predictor = i32::from(i16::from_le_bytes(adpcm[..2].try_into().unwrap()));
+    let mut index = i32::from(u16::from_le_bytes(adpcm[2..4].try_into().unwrap()).min(88));
+    let mut decoded = Vec::with_capacity((adpcm.len() - ADPCM_PREAMBLE_SIZE) * 2);
+    for packed in &adpcm[ADPCM_PREAMBLE_SIZE..] {
+        for code in [packed & 0x0f, packed >> 4] {
+            let step = IMA_STEP_TABLE[index as usize];
+            let mut delta = step >> 3;
+            if code & 1 != 0 {
+                delta += step >> 2;
+            }
+            if code & 2 != 0 {
+                delta += step >> 1;
+            }
+            if code & 4 != 0 {
+                delta += step;
+            }
+            predictor = if code & 8 != 0 {
+                predictor - delta
+            } else {
+                predictor + delta
+            }
+            .clamp(-32767, 32767);
+            index = (index + IMA_INDEX_TABLE[usize::from(code)]).clamp(0, 88);
+            decoded.push(predictor as i16);
+        }
+    }
+    Ok(decoded)
+}
+
+pub(crate) fn ima_roundtrip_pcm(samples: &[i16]) -> Result<Vec<i16>, BuildError> {
+    decode_ima_adpcm(&encode_ima_adpcm(samples)?)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SeInfo {
     file_size: usize,
@@ -1075,6 +1157,15 @@ struct SeInfo {
     sample_count: usize,
     bank_id: u16,
     name: String,
+}
+
+fn validate_expected_se_name(name: &str, expected_name: &str) -> Result<(), BuildError> {
+    if name == expected_name {
+        return Ok(());
+    }
+    Err(BuildError::Voice(format!(
+        "voice entry contains {name} instead of the expected {expected_name}"
+    )))
 }
 
 fn inspect_se(
@@ -1144,12 +1235,13 @@ fn inspect_se(
         .strip_suffix(".SW")
         .ok_or_else(|| BuildError::Voice("generated SWDL name lacks .SW".to_owned()))?
         .to_owned();
-    if read_fixed_ascii(data, sedl + 0x20, 16)? != format!("{name}.SE")
-        || expected_name.is_some_and(|expected| name != expected)
-    {
+    if read_fixed_ascii(data, sedl + 0x20, 16)? != format!("{name}.SE") {
         return Err(BuildError::Voice(
             "SWDL and SEDL internal names disagree".to_owned(),
         ));
+    }
+    if let Some(expected_name) = expected_name {
+        validate_expected_se_name(&name, expected_name)?;
     }
     let mcrl = find_once(data, b"mcrl", sedl, subheader)?;
     let mut macro_matches = 0_usize;
@@ -1239,6 +1331,30 @@ fn inspect_se(
         bank_id,
         name,
     })
+}
+
+pub(crate) fn decode_named_se_pcm(
+    data: &[u8],
+    expected_name: &str,
+) -> Result<Vec<i16>, BuildError> {
+    // V1 packs predate catalogue hashes, so the embedded symbol is their semantic link to a target.
+    let info = inspect_se(data, Some(expected_name), None)?;
+    let subheader = u32_at_usize(data, 4)?;
+    let swdl = u32_at_usize(data, subheader)?;
+    let sedl = u32_at_usize(data, subheader + 4)?;
+    let pcmd = find_once(data, b"pcmd", swdl + SWDL_HEADER_SIZE, sedl)?;
+    let pcmd_size = u32_at_usize(data, pcmd + 12)?;
+    let pcmd_data = pcmd + CHUNK_HEADER_SIZE;
+    let adpcm = checked_range(data, pcmd_data, pcmd_size)?;
+    let decoded = decode_ima_adpcm(adpcm)?;
+    if decoded.len() != info.sample_count {
+        return Err(BuildError::Voice(format!(
+            "decoded {} samples instead of the declared {}",
+            decoded.len(),
+            info.sample_count
+        )));
+    }
+    Ok(decoded)
 }
 
 fn build_se(
@@ -1779,6 +1895,10 @@ mod tests {
             encode_ima_adpcm(&[100, 200, 300, 400, 500, 600, 700, 800, 900]).unwrap(),
             [0x64, 0x00, 0x00, 0x00, 0x70, 0x77, 0x67, 0x11, 0x01, 0x08, 0x80, 0x08,]
         );
+        assert_eq!(
+            decode_ima_adpcm(&[0x00, 0x00, 0x00, 0x00, 0x70, 0x7f, 0x7f, 0x2f]).unwrap(),
+            [0, 11, -19, 44, -92, 201, -430, 22]
+        );
     }
 
     #[test]
@@ -1788,6 +1908,16 @@ mod tests {
         assert_eq!(
             decode_sir0_relocations(&encoded, 0).unwrap(),
             [4, 8, 0x1234, 0x1238]
+        );
+    }
+
+    #[test]
+    fn reference_entry_name_must_match_the_requested_target() {
+        validate_expected_se_name("SE_V0000", "SE_V0000").unwrap();
+        let error = validate_expected_se_name("SE_V0001", "SE_V0000").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid voice resource: voice entry contains SE_V0001 instead of the expected SE_V0000"
         );
     }
 

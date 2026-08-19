@@ -110,6 +110,46 @@ export interface DubbingTakeResult {
   summary: RecordingSummary;
 }
 
+export type DubbingReferenceLanguage = "japanese" | "english";
+
+export interface AudioLevelMetrics {
+  sampleRate: number;
+  frames: number;
+  durationMs: number;
+  peakDbfs: number | null;
+  activeRmsDbfs: number | null;
+  totalBlocks: number;
+  activeBlocks: number;
+  activeFrames: number;
+  gateDbfs: number;
+}
+
+export interface DubbingLevelAnalysis {
+  symbol: string;
+  takeId: string;
+  referenceLanguage: DubbingReferenceLanguage;
+  take: AudioLevelMetrics;
+  processed: AudioLevelMetrics;
+  reference: AudioLevelMetrics;
+  currentGainDb: number;
+  processedClippedSamples: number;
+  unconstrainedGainDb: number | null;
+  recommendedGainDb: number | null;
+  headroomGainDb: number | null;
+  headroomLimited: boolean;
+  gainLimited: boolean;
+  gainLimit: "minimum" | "maximum" | null;
+  unavailableReason: "take_silent" | "reference_silent" | null;
+}
+
+export interface DubbingLevelMatchBatchResult {
+  updated: Array<{ symbol: string; progress: TargetProgress }>;
+  matched: number;
+  headroomLimited: number;
+  gainLimited: number;
+  skipped: number;
+}
+
 export interface DubbingBuildProgress {
   stage: string;
   completed: number;

@@ -16,6 +16,7 @@ use tauri::{
 };
 
 use crate::dubbing::{
+    audio::{self, DubbingLevelAnalysis, DubbingLevelMatchBatchResult, DubbingReferenceLanguage},
     build::{self, BuildScope, TestRomBuildResult},
     project::{self, DubbingProjectSnapshot, TakeMetadata, TargetProgress, TargetStatus},
     recording::{AudioInputDevice, RecorderState, RecordingStartInfo, RecordingSummary},
@@ -482,6 +483,122 @@ pub async fn select_dubbing_take(
     })
     .await
     .map_err(|error| format!("Take selection was interrupted: {error}"))?
+}
+
+#[tauri::command]
+pub async fn analyze_dubbing_level(
+    app: AppHandle,
+    state: State<'_, DubbingRecordingState>,
+    project_dir: String,
+    symbol: String,
+    reference_language: DubbingReferenceLanguage,
+) -> Result<DubbingLevelAnalysis, String> {
+    let resources = resources(&app)?;
+    let profile_path = resources.profile.clone();
+    let inner = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _mutation = lock_project_mutations(&inner)?;
+        audio::analyze_dubbing_level(
+            project_dir,
+            profile_path,
+            &resources,
+            &symbol,
+            reference_language,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Audio level analysis was interrupted: {error}"))?
+}
+
+#[tauri::command]
+pub async fn update_dubbing_processing(
+    app: AppHandle,
+    state: State<'_, DubbingRecordingState>,
+    project_dir: String,
+    symbol: String,
+    gain_db: f32,
+    trim_start_ms: u64,
+    trim_end_ms: u64,
+) -> Result<TargetProgress, String> {
+    let profile_path = dubbing_profile(&app)?;
+    let inner = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _mutation = lock_project_mutations(&inner)?;
+        project::update_processing(
+            project_dir,
+            profile_path,
+            &symbol,
+            gain_db,
+            trim_start_ms,
+            trim_end_ms,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Audio processing update was interrupted: {error}"))?
+}
+
+#[tauri::command]
+pub async fn read_dubbing_processed_preview(
+    app: AppHandle,
+    state: State<'_, DubbingRecordingState>,
+    project_dir: String,
+    symbol: String,
+    on_data: Channel<Response>,
+) -> Result<(), String> {
+    let profile_path = dubbing_profile(&app)?;
+    let inner = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _mutation = lock_project_mutations(&inner)?;
+        let bytes = audio::processed_preview_wav(project_dir, profile_path, &symbol)
+            .map_err(|error| error.to_string())?;
+        on_data
+            .send(Response::new(bytes))
+            .map_err(|error| format!("Could not transfer the processed preview: {error}"))
+    })
+    .await
+    .map_err(|error| format!("Processed preview was interrupted: {error}"))?
+}
+
+#[tauri::command]
+pub async fn read_dubbing_reference_preview(
+    app: AppHandle,
+    symbol: String,
+    reference_language: DubbingReferenceLanguage,
+    on_data: Channel<Response>,
+) -> Result<(), String> {
+    let resources = resources(&app)?;
+    let profile_path = resources.profile.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes =
+            audio::reference_preview_wav(profile_path, &resources, &symbol, reference_language)
+                .map_err(|error| error.to_string())?;
+        on_data
+            .send(Response::new(bytes))
+            .map_err(|error| format!("Could not transfer the reference preview: {error}"))
+    })
+    .await
+    .map_err(|error| format!("Reference preview was interrupted: {error}"))?
+}
+
+#[tauri::command]
+pub async fn match_all_dubbing_levels(
+    app: AppHandle,
+    state: State<'_, DubbingRecordingState>,
+    project_dir: String,
+    reference_language: DubbingReferenceLanguage,
+) -> Result<DubbingLevelMatchBatchResult, String> {
+    let resources = resources(&app)?;
+    let profile_path = resources.profile.clone();
+    let inner = Arc::clone(&state.inner);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _mutation = lock_project_mutations(&inner)?;
+        audio::match_all_dubbing_levels(project_dir, profile_path, &resources, reference_language)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("Batch audio level matching was interrupted: {error}"))?
 }
 
 #[tauri::command]

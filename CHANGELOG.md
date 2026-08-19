@@ -16,6 +16,11 @@ the project uses semantic versioning for public releases.
 - A native preview builder that resamples and encodes recorded WAV masters,
   fills missing cues with 80 ms silence, creates
   `builds/voices-fr-preview.nvpack`, and applies it to a reversible test ROM.
+- Per-cue and batch voice-level matching against an explicitly selected
+  Japanese or English original voice, using energy-gated active-block level with peak
+  headroom protection.
+- Raw-take, final-DS, and original-reference playback for gain and codec A/B
+  checks before an in-game test-ROM pass.
 - Python preview and strict production export for French projects, including a
   machine-readable build report.
 - French CLI application through `--language fr --voice-pack <FILE>`.
@@ -45,6 +50,9 @@ the project uses semantic versioning for public releases.
   Studio as separate workspaces.
 - Dialogue context is limited to two neighboring text lines in the same script
   function.
+- Dubbing gain can be entered manually or matched to the selected original
+  voice. Suggested gain is limited to -60 dB through +24 dB and preserves at
+  least 1 dB of peak headroom without compression or limiting.
 - Project builds authenticate active WAV masters before encoding; production
   also requires every target to have an approved active take.
 - Reduced interface copy to the decisions and status needed to patch a ROM.

@@ -31,8 +31,8 @@ const MAX_WAV_CHUNK_OVERHEAD: u64 = 1024 * 1024;
 const MAX_SAMPLE_RATE: u32 = 384_000;
 const MAX_RECORDING_MS: u64 = 45_000;
 const MAX_NOTES_CHARS: usize = 4_000;
-const MIN_GAIN_DB: f32 = -60.0;
-const MAX_GAIN_DB: f32 = 24.0;
+pub(crate) const MIN_GAIN_DB: f32 = -60.0;
+pub(crate) const MAX_GAIN_DB: f32 = 24.0;
 const APPROVAL_DOMAIN: &[u8] = b"NVDUB_APPROVAL_V1\0";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -193,6 +193,13 @@ fn remove_link_after_failed_commit(path: &Path, parent: &Path) {
 
 pub(crate) struct ProjectMutationLock {
     file: File,
+}
+
+pub(crate) struct LockedProjectManifest {
+    manifest_path: PathBuf,
+    pub manifest: DubbingProjectManifest,
+    pub profile: VoiceProfile,
+    manifest_sha256: [u8; 32],
 }
 
 impl Drop for ProjectMutationLock {
@@ -685,6 +692,68 @@ fn load_manifest_with_profile(
     let manifest: DubbingProjectManifest = serde_json::from_slice(&manifest_data)?;
     validate_manifest(&manifest, &profile)?;
     Ok((manifest_path, manifest, profile, manifest_sha256))
+}
+
+pub(crate) fn load_locked_project_manifest(
+    project_dir: &Path,
+    profile_path: &Path,
+    _project_lock: &ProjectMutationLock,
+) -> Result<LockedProjectManifest, ProjectError> {
+    let (manifest_path, manifest, profile, manifest_sha256) =
+        load_manifest_with_profile(project_dir, profile_path)?;
+    Ok(LockedProjectManifest {
+        manifest_path,
+        manifest,
+        profile,
+        manifest_sha256,
+    })
+}
+
+pub(crate) fn save_locked_project_manifest(
+    project_dir: &Path,
+    state: &mut LockedProjectManifest,
+    _project_lock: &ProjectMutationLock,
+) -> Result<(), ProjectError> {
+    validate_manifest(&state.manifest, &state.profile)?;
+    state.manifest.updated_at_ms = now_ms()?;
+    write_manifest_atomic(
+        project_dir,
+        &state.manifest_path,
+        &state.manifest,
+        Some(state.manifest_sha256),
+    )?;
+    let manifest_data = read_limited_regular_file(&state.manifest_path, MAX_MANIFEST_BYTES)?;
+    state.manifest_sha256 = Sha256::digest(&manifest_data).into();
+    Ok(())
+}
+
+pub(crate) fn apply_processing_settings(
+    symbol: &str,
+    target: &mut TargetProgress,
+    gain_db: f32,
+    trim_start_ms: u64,
+    trim_end_ms: u64,
+) -> Result<bool, ProjectError> {
+    if target.active_take.is_none() {
+        return Err(ProjectError::Invalid(format!(
+            "target {symbol} has no active take to process"
+        )));
+    }
+    let changed = target.gain_db.to_bits() != gain_db.to_bits()
+        || target.trim_start_ms != trim_start_ms
+        || target.trim_end_ms != trim_end_ms;
+    if !changed {
+        return Ok(false);
+    }
+    target.gain_db = gain_db;
+    target.trim_start_ms = trim_start_ms;
+    target.trim_end_ms = trim_end_ms;
+    if target.status == TargetStatus::Approved {
+        target.status = TargetStatus::NeedsReview;
+    }
+    target.approval_sha256 = None;
+    validate_target_progress(symbol, target)?;
+    Ok(true)
 }
 
 fn validate_capture_path(
@@ -1181,6 +1250,31 @@ pub fn update_target(
     Ok(updated)
 }
 
+pub fn update_processing(
+    project_dir: impl AsRef<Path>,
+    profile_path: impl AsRef<Path>,
+    symbol: &str,
+    gain_db: f32,
+    trim_start_ms: u64,
+    trim_end_ms: u64,
+) -> Result<TargetProgress, ProjectError> {
+    let project_dir = project_dir.as_ref();
+    let profile_path = profile_path.as_ref();
+    let project_lock = lock_project_mutations(project_dir)?;
+    let mut state = load_locked_project_manifest(project_dir, profile_path, &project_lock)?;
+    let target = state
+        .manifest
+        .targets
+        .get_mut(symbol)
+        .ok_or_else(|| ProjectError::Invalid(format!("unknown voice target {symbol}")))?;
+    let changed = apply_processing_settings(symbol, target, gain_db, trim_start_ms, trim_end_ms)?;
+    let updated = target.clone();
+    if changed {
+        save_locked_project_manifest(project_dir, &mut state, &project_lock)?;
+    }
+    Ok(updated)
+}
+
 pub fn prepare_recording_path(
     project_dir: impl AsRef<Path>,
     profile_path: impl AsRef<Path>,
@@ -1622,6 +1716,59 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("approval does not match"));
+    }
+
+    #[test]
+    fn processing_updates_preserve_the_master_and_require_fresh_approval() {
+        let (_temporary, project_dir, profile_path) = synthetic_project();
+        let (take, _) = capture_and_commit(&project_dir, &profile_path, 1_000);
+        let take_path = project_dir.join(&take.file);
+        let master_before = fs::read(&take_path).unwrap();
+        update_target(
+            &project_dir,
+            &profile_path,
+            TEST_SYMBOL,
+            TargetStatus::Approved,
+            String::new(),
+        )
+        .unwrap();
+
+        let updated =
+            update_processing(&project_dir, &profile_path, TEST_SYMBOL, 6.0, 10, 10).unwrap();
+        assert_eq!(updated.status, TargetStatus::NeedsReview);
+        assert_eq!(updated.gain_db, 6.0);
+        assert_eq!(updated.trim_start_ms, 10);
+        assert_eq!(updated.trim_end_ms, 10);
+        assert!(updated.approval_sha256.is_none());
+        assert_eq!(fs::read(&take_path).unwrap(), master_before);
+
+        let manifest_path = project_dir.join(PROJECT_FILE);
+        let manifest_before_noop = fs::read(&manifest_path).unwrap();
+        let unchanged =
+            update_processing(&project_dir, &profile_path, TEST_SYMBOL, 6.0, 10, 10).unwrap();
+        assert_eq!(unchanged.status, TargetStatus::NeedsReview);
+        assert_eq!(fs::read(&manifest_path).unwrap(), manifest_before_noop);
+
+        let invalid = update_processing(
+            &project_dir,
+            &profile_path,
+            TEST_SYMBOL,
+            MAX_GAIN_DB + 1.0,
+            10,
+            10,
+        );
+        assert!(invalid.is_err());
+        assert_eq!(fs::read(&manifest_path).unwrap(), manifest_before_noop);
+
+        let approved = update_target(
+            &project_dir,
+            &profile_path,
+            TEST_SYMBOL,
+            TargetStatus::Approved,
+            String::new(),
+        )
+        .unwrap();
+        assert!(approved.approval_sha256.is_some());
     }
 
     #[test]

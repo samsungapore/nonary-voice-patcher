@@ -21,7 +21,8 @@ python3 -m unittest discover -s tests -v
 
 The Rust suite covers synthetic NitroFS and FSB parsing, receipts, CLI
 contracts, NVPACK v1/v2 validation, catalogue hashing, project integrity,
-approval invalidation, WAV inspection, audio conversion, DS encoding, and
+approval invalidation, WAV inspection, energy-gated active-block measurement,
+reference matching, audio conversion, DS encoding and decoding, and
 native-builder path safety. Tests that require a stock ROM, French translation,
 extracted FSB files, or real voice packs are marked `ignored` with their
 prerequisite. Test totals are intentionally not pinned in this document.
@@ -80,6 +81,12 @@ For translated inputs, additionally assert:
 | Inspect cue context | At most two lines before and after; no context crosses a script-function boundary |
 | Record multiple takes | Each capture becomes an immutable mono PCM16 WAV with a distinct ID and SHA-256 |
 | Select another take | The selected take becomes active and any prior approval is cleared |
+| Compare against JP, then EN | Each analysis uses the explicitly selected original voice pack and the matching `SE_V####` entry |
+| Match a normal take | Stored gain matches the active-block level where possible, causes no pre-IMA clipping, and keeps the measured Final DS peak at or below -1 dBFS |
+| Match a very quiet take | Gain stops at +24 dB, reports the limit, and recommends recording a stronger clean signal |
+| Match a transient-heavy take | Gain is reduced when necessary to preserve -1 dBFS headroom even if active RMS remains below the reference |
+| Match all recorded | Every measurable active take is updated independently; unrecorded cues remain outside the batch and active-but-unmeasurable takes are reported as skipped |
+| A/B preview | Raw take plays the committed master, Final DS includes saved processing and the DS codec path, and Original reference plays the selected source cue |
 | Approve, then change bound settings | Approval digest no longer validates until the cue is approved again |
 | Replace or symlink a WAV | Project open/build rejects the take before encoding |
 | Preview with partial recordings | Active takes are used; every missing cue receives 80 ms silence |
@@ -106,6 +113,40 @@ On each desktop platform:
 5. start another capture and navigate away or cancel, then confirm no committed
    take was added;
 6. build a preview ROM and confirm the UI reports the final path and hash.
+
+## Voice-level matching smoke test
+
+Use a real recorded cue and locally supplied Japanese and English voice packs:
+
+1. choose **Japanese**, select **Compare levels**, and record the displayed
+   take, reference, and Final DS active RMS values, the suggested gain, and the
+   measured Final DS peak;
+2. choose **English**, compare again, and confirm the reference values change
+   without changing the recorded WAV or saved gain;
+3. choose the intended language and select **Match reference**;
+4. confirm the stored gain follows the active-RMS difference rounded downward
+   to a safe 0.1 dB step, unless the codec/headroom check or the -60 dB to
+   +24 dB range limits it further;
+5. alternate **Raw take**, **Final DS**, and **Original reference** and confirm
+   that Raw plays the unchanged master while Final DS includes saved processing
+   and DS codec coloration;
+6. adjust **Dubbing gain** manually, save it, select **Compare levels** again,
+   and confirm the displayed Final DS peak and preview update while the
+   committed WAV hash does not;
+7. if the cue was approved, confirm a gain change returns it to **Needs
+   review**;
+8. run **Match all recorded** in a disposable project containing loud, quiet,
+   active-but-unmeasurable, and unrecorded examples, then verify the matched,
+   headroom-limited, gain-limited, and skipped counts; confirm that the
+   unrecorded cue is outside those counts;
+9. build a test ROM and listen to the cue in context with music and sound
+   effects. Treat this in-game pass, not the isolated preview, as final mix
+   acceptance.
+
+No step should reveal compression, limiting, automatic gain movement, or a
+changed master WAV. The matcher stores one constant per-cue gain, caps its own
+recommendation, and leaves a too-quiet source for the performer to record
+again.
 
 ## Static ROM audit
 

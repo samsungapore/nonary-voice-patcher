@@ -3,6 +3,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -14,6 +15,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowsLeftRight,
   CheckCircle,
   Circle,
   Clock,
@@ -26,6 +28,7 @@ import {
   Microphone,
   Pause,
   Play,
+  SpeakerHigh,
   SpinnerGap,
   Stop,
   Warning,
@@ -36,8 +39,11 @@ import type {
   AudioInputDevice,
   DubbingCue,
   DubbingBuildProgress,
+  DubbingLevelAnalysis,
+  DubbingLevelMatchBatchResult,
   DubbingProjectSnapshot,
   DubbingProjectSummary,
+  DubbingReferenceLanguage,
   DubbingStatusFilter,
   DubbingTakeResult,
   RecordingStartInfo,
@@ -131,10 +137,71 @@ const COPY = {
     notes: "Notes de direction",
     notesPlaceholder: "Intention, prononciation, raccord, prise à refaire…",
     status: "État",
-    save: "Enregistrer les informations",
+    save: "Enregistrer l’état, les notes et le gain",
     saved: "Informations enregistrées.",
     saveError: "Les informations n’ont pas pu être enregistrées.",
     unsaved: "Modifications non enregistrées",
+    audioBalance: "Équilibrage du volume",
+    audioBalanceBody:
+      "Le RMS actif mesure les blocs audio les plus forts et écarte les silences plus faibles. Comparez votre prise à une voix originale, puis écoutez le son tel qu’il sera encodé dans la ROM.",
+    levelNeedsTake: "Enregistrez et sélectionnez une prise pour équilibrer son volume.",
+    referenceVoice: "Voix originale de référence",
+    japaneseReference: "Japonais",
+    englishReference: "Anglais",
+    analyzeLevels: "Comparer les niveaux",
+    analyzingLevels: "Mesure des niveaux…",
+    analyzeError: "Les niveaux audio n’ont pas pu être comparés.",
+    takeActiveLevel: "Votre voix",
+    referenceActiveLevel: "Voix originale",
+    processedActiveLevel: "Niveau final DS",
+    currentGain: "Gain enregistré",
+    suggestedGain: "Gain conseillé",
+    finalPeak: "Crête finale DS",
+    notMeasured: "Non mesuré",
+    activeRms: "RMS des blocs actifs",
+    silentTake: "Aucun bloc audio actif mesurable n’a été trouvé dans cette prise.",
+    silentReference: "Aucun bloc audio actif mesurable n’a été trouvé dans la référence.",
+    gain: "Gain du doublage",
+    gainHelp: "Réglage appliqué à la prise active lors de la création de la ROM.",
+    applySuggestedGain: "Aligner sur la référence",
+    applyingGain: "Enregistrement du gain…",
+    gainSaved: "Gain enregistré.",
+    gainSaveError: "Le gain n’a pas pu être enregistré.",
+    saveGainFirst:
+      "Enregistrez d’abord le gain avec le bouton ci-dessous pour comparer les niveaux ou écouter le rendu DS.",
+    approvalReset:
+      "Si le gain change, une réplique validée repasse automatiquement à « À vérifier ».",
+    approvalResetDone: "Le gain a changé : la réplique doit être vérifiée à nouveau.",
+    headroomLimited:
+      "Le gain conseillé est réduit pour garder 1 dB de marge avant l’écrêtage.",
+    maximumGainLimited:
+      "Le gain conseillé atteint la limite de +24 dB. Réenregistrez avec une entrée propre et plus forte au lieu d’amplifier davantage.",
+    minimumGainLimited: "Le gain conseillé atteint la limite de −60 dB.",
+    peakRisk:
+      "Le signal est écrêté avant l’encodage DS ou sa crête finale laisse moins de 1 dB de marge.",
+    compareAudio: "Comparer le rendu",
+    rawTake: "Prise brute",
+    finalDs: "Rendu final DS",
+    originalReference: "Voix originale",
+    playRawTake: "Écouter la prise brute",
+    playFinalDs: "Écouter le rendu final DS",
+    playReference: "Écouter la voix originale",
+    pauseAudio: "Mettre en pause",
+    previewError: "La prévisualisation audio n’a pas pu être lue.",
+    matchAll: "Équilibrer toutes les prises",
+    matchingAll: "Équilibrage des prises…",
+    matchAllConfirmTitle: "Équilibrer toutes les prises actives ?",
+    matchAllConfirm:
+      "Le gain conseillé sera calculé et appliqué à chaque prise active avec la voix de référence sélectionnée.",
+    matchAllApprovalWarning:
+      "Les répliques déjà validées dont le gain change repasseront à « À vérifier ».",
+    confirmMatchAll: "Équilibrer les prises",
+    cancelMatchAll: "Annuler",
+    matchAllError: "Les prises n’ont pas pu être équilibrées.",
+    matched: "prises équilibrées",
+    limitedForHeadroom: "limitées pour conserver la marge",
+    limitedByGain: "limitées par la plage de gain",
+    skippedDuringMatch: "ignorées faute de signal actif mesurable",
     buildTest: "Créer une ROM de test",
     buildNeedsTake: "Enregistrez au moins une prise avant de créer une ROM de test.",
     buildDialog: "Enregistrer la ROM de prévisualisation française",
@@ -227,10 +294,71 @@ const COPY = {
     notes: "Direction notes",
     notesPlaceholder: "Intent, pronunciation, continuity, retake notes…",
     status: "Status",
-    save: "Save line details",
+    save: "Save status, notes, and gain",
     saved: "Line details saved.",
     saveError: "Line details could not be saved.",
     unsaved: "Unsaved changes",
+    audioBalance: "Volume matching",
+    audioBalanceBody:
+      "Active RMS measures the louder audio blocks and excludes quieter silence. Compare your take with an original voice, then hear the audio as it will be encoded in the ROM.",
+    levelNeedsTake: "Record and select a take to match its volume.",
+    referenceVoice: "Original voice reference",
+    japaneseReference: "Japanese",
+    englishReference: "English",
+    analyzeLevels: "Compare levels",
+    analyzingLevels: "Measuring levels…",
+    analyzeError: "The audio levels could not be compared.",
+    takeActiveLevel: "Your voice",
+    referenceActiveLevel: "Original voice",
+    processedActiveLevel: "Final DS level",
+    currentGain: "Saved gain",
+    suggestedGain: "Suggested gain",
+    finalPeak: "Final DS peak",
+    notMeasured: "Not measured",
+    activeRms: "active-block RMS",
+    silentTake: "No measurable active audio block was found in this take.",
+    silentReference: "No measurable active audio block was found in the reference.",
+    gain: "Dubbing gain",
+    gainHelp: "Applied to the active take when the ROM is built.",
+    applySuggestedGain: "Match reference",
+    applyingGain: "Saving gain…",
+    gainSaved: "Gain saved.",
+    gainSaveError: "The gain could not be saved.",
+    saveGainFirst:
+      "Save the gain with the button below before comparing levels or playing the DS-encoded preview.",
+    approvalReset:
+      "If the gain changes, an approved line automatically returns to Needs review.",
+    approvalResetDone: "The gain changed: this line must be reviewed again.",
+    headroomLimited:
+      "The suggested gain is reduced to keep 1 dB of headroom before clipping.",
+    maximumGainLimited:
+      "The suggested gain reached the +24 dB limit. Record again with a stronger clean input instead of boosting further.",
+    minimumGainLimited: "The suggested gain reached the −60 dB limit.",
+    peakRisk:
+      "The signal clips before DS encoding, or its final peak leaves less than 1 dB of headroom.",
+    compareAudio: "Compare the result",
+    rawTake: "Raw take",
+    finalDs: "Final DS",
+    originalReference: "Original reference",
+    playRawTake: "Play raw take",
+    playFinalDs: "Play final DS audio",
+    playReference: "Play original reference",
+    pauseAudio: "Pause audio",
+    previewError: "The audio preview could not be played.",
+    matchAll: "Match all recorded",
+    matchingAll: "Matching recorded lines…",
+    matchAllConfirmTitle: "Match all active takes?",
+    matchAllConfirm:
+      "The suggested gain will be calculated and applied to every active take using the selected reference voice.",
+    matchAllApprovalWarning:
+      "Approved lines whose gain changes will return to Needs review.",
+    confirmMatchAll: "Match all takes",
+    cancelMatchAll: "Cancel",
+    matchAllError: "The recorded lines could not be matched.",
+    matched: "recordings matched",
+    limitedForHeadroom: "limited to preserve headroom",
+    limitedByGain: "limited by the gain range",
+    skippedDuringMatch: "skipped because no measurable active audio was available",
     buildTest: "Build test ROM",
     buildNeedsTake: "Record at least one take before building a test ROM.",
     buildDialog: "Save the French preview ROM",
@@ -297,6 +425,28 @@ function formatDuration(milliseconds: number, precise = false): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+const MIN_GAIN_DB = -60;
+const MAX_GAIN_DB = 24;
+
+function clampGain(value: number): number {
+  return Math.min(MAX_GAIN_DB, Math.max(MIN_GAIN_DB, Math.round(value * 10) / 10));
+}
+
+function formatDb(value: number | null, signed = false): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const prefix = signed && value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(1)} dB`;
+}
+
+function formatDbfs(value: number | null, fractionDigits = 1): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(fractionDigits)} dBFS`;
+}
+
+function rawAudioKey(symbol: string, takeId: string): string {
+  return `${symbol}:raw:${takeId}`;
+}
+
 function normalizeSearch(value: string): string {
   return value
     .normalize("NFKD")
@@ -327,6 +477,9 @@ function normalizeProgress(progress: TargetProgress): TargetProgress {
     ...progress,
     takes: progress.takes ?? [],
     notes: progress.notes ?? "",
+    gainDb: progress.gainDb ?? 0,
+    trimStartMs: progress.trimStartMs ?? 0,
+    trimEndMs: progress.trimEndMs ?? 0,
   };
 }
 
@@ -759,30 +912,55 @@ export function DubbingStudioView({
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingStartedAt, setRecordingStartedAt] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
-  const [playingTakeId, setPlayingTakeId] = useState("");
-  const [audioBusyTakeId, setAudioBusyTakeId] = useState("");
+  const [playingAudioKey, setPlayingAudioKey] = useState("");
+  const [audioBusyKey, setAudioBusyKey] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
   const [statusDraft, setStatusDraft] = useState<TargetStatus>("missing");
+  const [gainDraft, setGainDraft] = useState(0);
   const [savingTarget, setSavingTarget] = useState(false);
+  const [referenceLanguage, setReferenceLanguage] =
+    useState<DubbingReferenceLanguage>("japanese");
+  const [levelAnalysis, setLevelAnalysis] = useState<DubbingLevelAnalysis | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [processingBusy, setProcessingBusy] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchConfirmationOpen, setBatchConfirmationOpen] = useState(false);
+  const [batchResult, setBatchResult] =
+    useState<DubbingLevelMatchBatchResult | null>(null);
   const [buildBusy, setBuildBusy] = useState(false);
   const [buildProgress, setBuildProgress] = useState<DubbingBuildProgress | null>(null);
   const [buildResult, setBuildResult] = useState<TestRomBuildResult | null>(null);
   const [error, setError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [lastRecording, setLastRecording] = useState<DubbingTakeResult["summary"] | null>(null);
-  const audioRef = useRef<{ audio: HTMLAudioElement; url: string; takeId: string } | null>(null);
+  const audioRef = useRef<{ audio: HTMLAudioElement; url: string; key: string } | null>(null);
   const audioRequestRef = useRef(0);
+  const analysisRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const recordingRef = useRef(false);
   const recordingSymbolRef = useRef("");
   const recordingTokenRef = useRef(0);
   const recordingStartupRef = useRef<Promise<void> | null>(null);
   const savingTargetRef = useRef(false);
+  const batchRunRef = useRef(false);
+  const batchMatchButtonRef = useRef<HTMLButtonElement | null>(null);
+  const batchCancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const currentCue = useMemo(
     () => snapshot?.cues.find((cue) => cue.symbol === selectedSymbol) ?? null,
     [selectedSymbol, snapshot],
   );
+  const currentLevelAnalysis = useMemo(() => {
+    if (
+      !levelAnalysis ||
+      levelAnalysis.symbol !== currentCue?.symbol ||
+      levelAnalysis.takeId !== currentCue.progress.activeTake ||
+      levelAnalysis.referenceLanguage !== referenceLanguage
+    ) {
+      return null;
+    }
+    return levelAnalysis;
+  }, [currentCue?.progress.activeTake, currentCue?.symbol, levelAnalysis, referenceLanguage]);
 
   const filteredCues = useMemo(() => {
     if (!snapshot) return [];
@@ -800,9 +978,19 @@ export function DubbingStudioView({
     () => filteredCues.findIndex((cue) => cue.symbol === selectedSymbol),
     [filteredCues, selectedSymbol],
   );
-  const notesDirty = currentCue
+  const detailsDirty = currentCue
     ? notesDraft !== currentCue.progress.notes || statusDraft !== visibleStatus(currentCue)
     : false;
+  const gainDirty = currentCue
+    ? Math.abs(gainDraft - currentCue.progress.gainDb) >= 0.05
+    : false;
+  const targetDirty = detailsDirty || gainDirty;
+  const workspaceBusy = buildBusy || processingBusy || batchBusy;
+  const exclusiveOperationActive =
+    recordingState !== "idle" ||
+    buildBusy ||
+    batchBusy ||
+    Boolean(audioBusyKey || playingAudioKey);
   const missingCount = useMemo(
     () =>
       snapshot?.cues.filter(
@@ -836,8 +1024,14 @@ export function DubbingStudioView({
       URL.revokeObjectURL(current.url);
       audioRef.current = null;
     }
-    setPlayingTakeId("");
-    setAudioBusyTakeId("");
+    setPlayingAudioKey("");
+    setAudioBusyKey("");
+  }, []);
+
+  const invalidateLevelAnalysis = useCallback(() => {
+    analysisRequestRef.current += 1;
+    setLevelAnalysis(null);
+    setAnalysisBusy(false);
   }, []);
 
   const replaceProgress = useCallback((symbol: string, progress: TargetProgress) => {
@@ -847,6 +1041,7 @@ export function DubbingStudioView({
     setBuildResult(null);
     setBuildProgress(null);
     setLastRecording(null);
+    setBatchResult(null);
     setSnapshot((current) => {
       if (!current) return current;
       const cues = current.cues.map((cue) =>
@@ -860,6 +1055,31 @@ export function DubbingStudioView({
           ...current.manifest,
           targets: { ...current.manifest.targets, [symbol]: normalized },
         },
+      };
+    });
+  }, []);
+
+  const replaceProgresses = useCallback((updated: DubbingLevelMatchBatchResult["updated"]) => {
+    const bySymbol = new Map(
+      updated.map(({ symbol, progress }) => [symbol, normalizeProgress(progress)]),
+    );
+    setBuildResult(null);
+    setBuildProgress(null);
+    setLastRecording(null);
+    setSnapshot((current) => {
+      if (!current) return current;
+      const targets = { ...current.manifest.targets };
+      const cues = current.cues.map((cue) => {
+        const progress = bySymbol.get(cue.symbol);
+        if (!progress) return cue;
+        targets[cue.symbol] = progress;
+        return { ...cue, progress };
+      });
+      return {
+        ...current,
+        cues,
+        summary: summarize(cues),
+        manifest: { ...current.manifest, targets },
       };
     });
   }, []);
@@ -885,27 +1105,53 @@ export function DubbingStudioView({
     async (announce = true): Promise<boolean> => {
       const project = snapshot;
       const cue = currentCue;
-      if (!project || !cue || !notesDirty) return true;
+      if (!project || !cue || !targetDirty) return true;
       if (
         savingTargetRef.current ||
         recordingState !== "idle" ||
-        buildBusy
+        workspaceBusy
       ) {
         return false;
       }
 
       savingTargetRef.current = true;
       setSavingTarget(true);
+      if (gainDirty) {
+        stopPlayback();
+        setProcessingBusy(true);
+      }
       try {
-        const progress = await invoke<TargetProgress>("update_dubbing_target", {
-          projectDir: project.projectDir,
-          symbol: cue.symbol,
-          status: statusDraft,
-          notes: notesDraft,
-        });
-        if (!mountedRef.current) return false;
-        replaceProgress(cue.symbol, progress);
-        if (announce) setAnnouncement(copy.saved);
+        let progress = cue.progress;
+        if (detailsDirty) {
+          progress = await invoke<TargetProgress>("update_dubbing_target", {
+            projectDir: project.projectDir,
+            symbol: cue.symbol,
+            status: statusDraft,
+            notes: notesDraft,
+          });
+          if (!mountedRef.current) return false;
+          replaceProgress(cue.symbol, progress);
+        }
+        if (gainDirty) {
+          const statusBeforeGain = progress.status;
+          progress = await invoke<TargetProgress>("update_dubbing_processing", {
+            projectDir: project.projectDir,
+            symbol: cue.symbol,
+            gainDb: clampGain(gainDraft),
+            trimStartMs: progress.trimStartMs,
+            trimEndMs: progress.trimEndMs,
+          });
+          if (!mountedRef.current) return false;
+          replaceProgress(cue.symbol, progress);
+          setLevelAnalysis(null);
+          if (announce && statusBeforeGain === "approved" && progress.status === "needs_review") {
+            setAnnouncement(copy.approvalResetDone);
+          } else if (announce) {
+            setAnnouncement(copy.saved);
+          }
+        } else if (announce) {
+          setAnnouncement(copy.saved);
+        }
         setError("");
         return true;
       } catch (caught) {
@@ -915,20 +1161,28 @@ export function DubbingStudioView({
         return false;
       } finally {
         savingTargetRef.current = false;
-        if (mountedRef.current) setSavingTarget(false);
+        if (mountedRef.current) {
+          setSavingTarget(false);
+          setProcessingBusy(false);
+        }
       }
     },
     [
-      buildBusy,
+      copy.approvalResetDone,
       copy.saveError,
       copy.saved,
       currentCue,
-      notesDirty,
+      detailsDirty,
+      gainDirty,
+      gainDraft,
       notesDraft,
       recordingState,
       replaceProgress,
       snapshot,
       statusDraft,
+      stopPlayback,
+      targetDirty,
+      workspaceBusy,
     ],
   );
 
@@ -939,34 +1193,36 @@ export function DubbingStudioView({
         recordingState !== "idle" ||
         recordingRef.current ||
         savingTargetRef.current ||
-        buildBusy
+        workspaceBusy
       ) {
         return false;
       }
       if (!(await persistCurrentDraft(false)) || !mountedRef.current) return false;
       stopPlayback();
+      invalidateLevelAnalysis();
       setSelectedSymbol(symbol);
       setError("");
       setLastRecording(null);
       return true;
     },
     [
-      buildBusy,
       persistCurrentDraft,
       recordingState,
       selectedSymbol,
+      invalidateLevelAnalysis,
       stopPlayback,
+      workspaceBusy,
     ],
   );
 
   const navigate = useCallback(
     (direction: -1 | 1) => {
-      if (!filteredCues.length || recordingState !== "idle" || buildBusy) return;
+      if (!filteredCues.length || recordingState !== "idle" || workspaceBusy) return;
       const origin = filteredPosition < 0 ? (direction > 0 ? -1 : 0) : filteredPosition;
       const next = Math.min(filteredCues.length - 1, Math.max(0, origin + direction));
       void selectCue(filteredCues[next].symbol);
     },
-    [buildBusy, filteredCues, filteredPosition, recordingState, selectCue],
+    [filteredCues, filteredPosition, recordingState, selectCue, workspaceBusy],
   );
 
   const startRecording = useCallback(async () => {
@@ -978,7 +1234,7 @@ export function DubbingStudioView({
       !deviceId ||
       recordingState !== "idle" ||
       recordingRef.current ||
-      buildBusy
+      workspaceBusy
     ) {
       return;
     }
@@ -997,7 +1253,6 @@ export function DubbingStudioView({
     setError("");
     setLastRecording(null);
     setRecordingState("starting");
-    onExclusiveOperationChange?.(true);
     try {
       // Let React commit the exclusive state so app music is paused before the native stream opens.
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
@@ -1033,7 +1288,6 @@ export function DubbingStudioView({
       recordingSymbolRef.current = "";
       setRecordingState("idle");
       setError(`${copy.recordError} ${rawError(caught)}`);
-      onExclusiveOperationChange?.(false);
     } finally {
       if (recordingStartupRef.current === startupSettled) {
         recordingStartupRef.current = null;
@@ -1041,16 +1295,15 @@ export function DubbingStudioView({
       settleStartup();
     }
   }, [
-    buildBusy,
     copy.recordError,
     copy.recording,
     currentCue,
     deviceId,
-    onExclusiveOperationChange,
     persistCurrentDraft,
     recordingState,
     snapshot,
     stopPlayback,
+    workspaceBusy,
   ]);
 
   const stopRecording = useCallback(async () => {
@@ -1077,14 +1330,12 @@ export function DubbingStudioView({
         recordingSymbolRef.current = "";
         setRecordingState("idle");
         setRecordingElapsed(0);
-        onExclusiveOperationChange?.(false);
       }
     }
   }, [
     copy.peak,
     copy.recordedAnnouncement,
     copy.stopError,
-    onExclusiveOperationChange,
     recordingState,
     replaceProgress,
   ]);
@@ -1121,36 +1372,66 @@ export function DubbingStudioView({
       if (mountedRef.current && recordingTokenRef.current === token) {
         setRecordingState("idle");
         setRecordingElapsed(0);
-        onExclusiveOperationChange?.(false);
       }
     }
-  }, [copy.cancelledAnnouncement, onExclusiveOperationChange, recordingState]);
+  }, [copy.cancelledAnnouncement, recordingState]);
 
-  const playTake = useCallback(
-    async (take: TakeMetadata) => {
-      if (!snapshot || !currentCue || recordingState !== "idle" || buildBusy) return;
-      if (audioRef.current?.takeId === take.id) {
+  const playStreamedAudio = useCallback(
+    async (
+      key: string,
+      command: string,
+      args: Record<string, unknown>,
+      errorMessage: string,
+    ) => {
+      if (recordingState !== "idle" || workspaceBusy) return;
+      if (audioRef.current?.key === key) {
         if (audioRef.current.audio.paused) {
-          await audioRef.current.audio.play();
-          setPlayingTakeId(take.id);
+          const current = audioRef.current;
+          const request = audioRequestRef.current;
+          setAudioBusyKey(key);
+          try {
+            // Give the derived exclusive-audio state one commit before playback resumes, so the
+            // application soundtrack cannot leak into the first resumed samples.
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+            if (
+              request !== audioRequestRef.current ||
+              audioRef.current?.audio !== current.audio
+            ) {
+              return;
+            }
+            await current.audio.play();
+            if (
+              request !== audioRequestRef.current ||
+              audioRef.current?.audio !== current.audio
+            ) {
+              current.audio.pause();
+              return;
+            }
+            setPlayingAudioKey(key);
+          } catch (caught) {
+            if (request === audioRequestRef.current) {
+              stopPlayback();
+              setError(`${errorMessage} ${rawError(caught)}`);
+            }
+          } finally {
+            if (request === audioRequestRef.current) setAudioBusyKey("");
+          }
         } else {
           audioRef.current.audio.pause();
-          setPlayingTakeId("");
+          setPlayingAudioKey("");
         }
         return;
       }
 
       stopPlayback();
-      setAudioBusyTakeId(take.id);
+      setAudioBusyKey(key);
       const request = audioRequestRef.current;
       try {
         const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
           const audioChannel = new Channel<ArrayBuffer>();
           audioChannel.onmessage = resolve;
-          void invoke<void>("read_dubbing_take", {
-            projectDir: snapshot.projectDir,
-            symbol: currentCue.symbol,
-            takeId: take.id,
+          void invoke<void>(command, {
+            ...args,
             onData: audioChannel,
           }).catch(reject);
         });
@@ -1162,33 +1443,59 @@ export function DubbingStudioView({
           return;
         }
         const audio = new Audio(url);
-        audioRef.current = { audio, url, takeId: take.id };
+        audioRef.current = { audio, url, key };
         audio.addEventListener("ended", () => {
-          if (audioRef.current?.audio === audio) setPlayingTakeId("");
+          if (audioRef.current?.audio === audio) setPlayingAudioKey("");
         });
         audio.addEventListener("error", () => {
           if (audioRef.current?.audio === audio) {
-            setError(copy.readError);
+            setError(errorMessage);
             stopPlayback();
           }
         });
         await audio.play();
-        setPlayingTakeId(take.id);
+        if (
+          request !== audioRequestRef.current ||
+          audioRef.current?.audio !== audio
+        ) {
+          audio.pause();
+          return;
+        }
+        setPlayingAudioKey(audio.ended ? "" : key);
       } catch (caught) {
-        stopPlayback();
-        setError(`${copy.readError} ${rawError(caught)}`);
+        if (request === audioRequestRef.current) {
+          stopPlayback();
+          setError(`${errorMessage} ${rawError(caught)}`);
+        }
       } finally {
-        setAudioBusyTakeId("");
+        if (request === audioRequestRef.current) setAudioBusyKey("");
       }
     },
-    [buildBusy, copy.readError, currentCue, recordingState, snapshot, stopPlayback],
+    [recordingState, stopPlayback, workspaceBusy],
+  );
+
+  const playTake = useCallback(
+    async (take: TakeMetadata) => {
+      if (!snapshot || !currentCue) return;
+      await playStreamedAudio(
+        rawAudioKey(currentCue.symbol, take.id),
+        "read_dubbing_take",
+        {
+          projectDir: snapshot.projectDir,
+          symbol: currentCue.symbol,
+          takeId: take.id,
+        },
+        copy.readError,
+      );
+    },
+    [copy.readError, currentCue, playStreamedAudio, snapshot],
   );
 
   const selectTake = useCallback(
     async (take: TakeMetadata) => {
       const project = snapshot;
       const cue = currentCue;
-      if (!project || !cue || recordingState !== "idle" || buildBusy) return;
+      if (!project || !cue || recordingState !== "idle" || workspaceBusy) return;
       if (!(await persistCurrentDraft(false)) || !mountedRef.current) return;
       try {
         const progress = await invoke<TargetProgress>("select_dubbing_take", {
@@ -1204,7 +1511,6 @@ export function DubbingStudioView({
       }
     },
     [
-      buildBusy,
       copy.activeTake,
       copy.selectError,
       currentCue,
@@ -1212,6 +1518,7 @@ export function DubbingStudioView({
       recordingState,
       replaceProgress,
       snapshot,
+      workspaceBusy,
     ],
   );
 
@@ -1219,11 +1526,278 @@ export function DubbingStudioView({
     await persistCurrentDraft(true);
   }, [persistCurrentDraft]);
 
+  const analyzeLevel = useCallback(async () => {
+    const project = snapshot;
+    const cue = currentCue;
+    if (
+      !project ||
+      !cue?.progress.activeTake ||
+      gainDirty ||
+      recordingState !== "idle" ||
+      workspaceBusy ||
+      savingTargetRef.current
+    ) {
+      return;
+    }
+    const request = analysisRequestRef.current + 1;
+    analysisRequestRef.current = request;
+    setAnalysisBusy(true);
+    setError("");
+    try {
+      const analysis = await invoke<DubbingLevelAnalysis>("analyze_dubbing_level", {
+        projectDir: project.projectDir,
+        symbol: cue.symbol,
+        referenceLanguage,
+      });
+      if (!mountedRef.current || analysisRequestRef.current !== request) return;
+      setLevelAnalysis(analysis);
+    } catch (caught) {
+      if (mountedRef.current && analysisRequestRef.current === request) {
+        setError(`${copy.analyzeError} ${rawError(caught)}`);
+      }
+    } finally {
+      if (mountedRef.current && analysisRequestRef.current === request) {
+        setAnalysisBusy(false);
+      }
+    }
+  }, [copy.analyzeError, currentCue, gainDirty, recordingState, referenceLanguage, snapshot, workspaceBusy]);
+
+  const applySuggestedGain = useCallback(async () => {
+    const project = snapshot;
+    const cue = currentCue;
+    const analysis = currentLevelAnalysis;
+    const recommended = analysis?.recommendedGainDb;
+    if (
+      !project ||
+      !cue?.progress.activeTake ||
+      !analysis ||
+      analysis.symbol !== cue.symbol ||
+      analysis.takeId !== cue.progress.activeTake ||
+      analysis.referenceLanguage !== referenceLanguage ||
+      recommended === null ||
+      recommended === undefined ||
+      recordingState !== "idle" ||
+      workspaceBusy ||
+      savingTargetRef.current
+    ) {
+      return;
+    }
+
+    savingTargetRef.current = true;
+    setSavingTarget(true);
+    setProcessingBusy(true);
+    stopPlayback();
+    setError("");
+    try {
+      let progress = cue.progress;
+      if (detailsDirty) {
+        progress = await invoke<TargetProgress>("update_dubbing_target", {
+          projectDir: project.projectDir,
+          symbol: cue.symbol,
+          status: statusDraft,
+          notes: notesDraft,
+        });
+        if (!mountedRef.current) return;
+        replaceProgress(cue.symbol, progress);
+      }
+      const statusBeforeGain = progress.status;
+      progress = await invoke<TargetProgress>("update_dubbing_processing", {
+        projectDir: project.projectDir,
+        symbol: cue.symbol,
+        gainDb: recommended,
+        trimStartMs: progress.trimStartMs,
+        trimEndMs: progress.trimEndMs,
+      });
+      if (!mountedRef.current) return;
+      replaceProgress(cue.symbol, progress);
+      setGainDraft(progress.gainDb);
+      const analysisRequest = analysisRequestRef.current + 1;
+      analysisRequestRef.current = analysisRequest;
+      setAnalysisBusy(true);
+      try {
+        const refreshed = await invoke<DubbingLevelAnalysis>("analyze_dubbing_level", {
+          projectDir: project.projectDir,
+          symbol: cue.symbol,
+          referenceLanguage,
+        });
+        if (mountedRef.current && analysisRequestRef.current === analysisRequest) {
+          setLevelAnalysis(refreshed);
+        }
+      } catch (caught) {
+        if (mountedRef.current && analysisRequestRef.current === analysisRequest) {
+          setLevelAnalysis(null);
+          setError(`${copy.analyzeError} ${rawError(caught)}`);
+        }
+      } finally {
+        if (mountedRef.current && analysisRequestRef.current === analysisRequest) {
+          setAnalysisBusy(false);
+        }
+      }
+      setAnnouncement(
+        statusBeforeGain === "approved" && progress.status === "needs_review"
+          ? copy.approvalResetDone
+          : copy.gainSaved,
+      );
+    } catch (caught) {
+      if (mountedRef.current) {
+        setError(`${copy.gainSaveError} ${rawError(caught)}`);
+      }
+    } finally {
+      savingTargetRef.current = false;
+      if (mountedRef.current) {
+        setSavingTarget(false);
+        setProcessingBusy(false);
+      }
+    }
+  }, [
+    copy.analyzeError,
+    copy.approvalResetDone,
+    copy.gainSaveError,
+    copy.gainSaved,
+    currentCue,
+    currentLevelAnalysis,
+    detailsDirty,
+    notesDraft,
+    recordingState,
+    referenceLanguage,
+    replaceProgress,
+    snapshot,
+    statusDraft,
+    stopPlayback,
+    workspaceBusy,
+  ]);
+
+  const playProcessedPreview = useCallback(async () => {
+    const project = snapshot;
+    const cue = currentCue;
+    if (
+      !project ||
+      !cue?.progress.activeTake ||
+      gainDirty ||
+      recordingState !== "idle" ||
+      workspaceBusy ||
+      savingTargetRef.current
+    ) {
+      return;
+    }
+    await playStreamedAudio(
+      `${cue.symbol}:processed:${cue.progress.activeTake}:${clampGain(gainDraft)}`,
+      "read_dubbing_processed_preview",
+      { projectDir: project.projectDir, symbol: cue.symbol },
+      copy.previewError,
+    );
+  }, [
+    copy.previewError,
+    currentCue,
+    gainDraft,
+    gainDirty,
+    playStreamedAudio,
+    recordingState,
+    snapshot,
+    workspaceBusy,
+  ]);
+
+  const playReferencePreview = useCallback(async () => {
+    const cue = currentCue;
+    if (!cue || recordingState !== "idle" || workspaceBusy) return;
+    await playStreamedAudio(
+      `${cue.symbol}:reference:${referenceLanguage}`,
+      "read_dubbing_reference_preview",
+      { symbol: cue.symbol, referenceLanguage },
+      copy.previewError,
+    );
+  }, [copy.previewError, currentCue, playStreamedAudio, recordingState, referenceLanguage, workspaceBusy]);
+
+  const closeMatchAllConfirmation = useCallback(() => {
+    setBatchConfirmationOpen(false);
+    window.requestAnimationFrame(() => batchMatchButtonRef.current?.focus());
+  }, []);
+
+  const openMatchAllConfirmation = useCallback(() => {
+    const project = snapshot;
+    if (
+      !project ||
+      project.summary.recorded === 0 ||
+      recordingState !== "idle" ||
+      analysisBusy ||
+      batchConfirmationOpen ||
+      workspaceBusy ||
+      savingTargetRef.current ||
+      batchRunRef.current
+    ) {
+      return;
+    }
+    stopPlayback();
+    setBatchConfirmationOpen(true);
+  }, [analysisBusy, batchConfirmationOpen, recordingState, snapshot, stopPlayback, workspaceBusy]);
+
+  const matchAllLevels = useCallback(async () => {
+    const project = snapshot;
+    if (
+      !project ||
+      project.summary.recorded === 0 ||
+      recordingState !== "idle" ||
+      workspaceBusy ||
+      savingTargetRef.current ||
+      batchRunRef.current
+    ) {
+      return;
+    }
+
+    batchRunRef.current = true;
+    setBatchConfirmationOpen(false);
+    setBatchBusy(true);
+    setBatchResult(null);
+    setLevelAnalysis(null);
+    stopPlayback();
+    setError("");
+    try {
+      if (!(await persistCurrentDraft(false)) || !mountedRef.current) return;
+      const result = await invoke<DubbingLevelMatchBatchResult>("match_all_dubbing_levels", {
+        projectDir: project.projectDir,
+        referenceLanguage,
+      });
+      if (!mountedRef.current) return;
+      replaceProgresses(result.updated);
+      setBatchResult(result);
+      setAnnouncement(`${result.matched.toLocaleString()} ${copy.matched}.`);
+    } catch (caught) {
+      if (mountedRef.current) {
+        setError(`${copy.matchAllError} ${rawError(caught)}`);
+      }
+    } finally {
+      batchRunRef.current = false;
+      if (mountedRef.current) {
+        setBatchBusy(false);
+        window.requestAnimationFrame(() => batchMatchButtonRef.current?.focus());
+      }
+    }
+  }, [
+    copy.matchAllError,
+    copy.matched,
+    persistCurrentDraft,
+    recordingState,
+    referenceLanguage,
+    replaceProgresses,
+    snapshot,
+    stopPlayback,
+    workspaceBusy,
+  ]);
+
+  const changeGainDraft = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value)) return;
+      stopPlayback();
+      setGainDraft(clampGain(value));
+    },
+    [stopPlayback],
+  );
+
   const buildTestRom = useCallback(async () => {
     const project = snapshot;
     if (
       !project ||
-      buildBusy ||
+      workspaceBusy ||
       recordingState !== "idle" ||
       project.summary.recorded === 0
     ) {
@@ -1248,7 +1822,6 @@ export function DubbingStudioView({
     setBuildResult(null);
     setBuildProgress({ stage: "validate", completed: 0, total: 1, message: copy.buildingTest });
     setError("");
-    onExclusiveOperationChange?.(true);
     try {
       const result = await invoke<TestRomBuildResult>("build_dubbing_test_rom", {
         projectDir: project.projectDir,
@@ -1263,32 +1836,36 @@ export function DubbingStudioView({
     } finally {
       if (mountedRef.current) {
         setBuildBusy(false);
-        onExclusiveOperationChange?.(false);
       }
     }
   }, [
-    buildBusy,
     copy.buildDialog,
     copy.buildError,
     copy.buildDone,
     copy.buildingTest,
     copy.romFilter,
-    onExclusiveOperationChange,
     persistCurrentDraft,
     recordingState,
     snapshot,
     stopPlayback,
+    workspaceBusy,
   ]);
 
   const clearProjectSession = useCallback(() => {
+    invalidateLevelAnalysis();
     stopPlayback();
+    batchRunRef.current = false;
+    setBatchBusy(false);
+    setBatchConfirmationOpen(false);
     setBuildProgress(null);
     setBuildResult(null);
     setLastRecording(null);
+    setBatchResult(null);
+    setReferenceLanguage("japanese");
     setError("");
     setSearch("");
     setFilter("all");
-  }, [stopPlayback]);
+  }, [invalidateLevelAnalysis, stopPlayback]);
 
   const loadProject = useCallback(
     (loaded: DubbingProjectSnapshot) => {
@@ -1301,12 +1878,12 @@ export function DubbingStudioView({
   );
 
   const closeProject = useCallback(async () => {
-    if (recordingState !== "idle" || buildBusy) return;
+    if (recordingState !== "idle" || workspaceBusy) return;
     if (!(await persistCurrentDraft(false)) || !mountedRef.current) return;
     clearProjectSession();
     setSnapshot(null);
     setSelectedSymbol("");
-  }, [buildBusy, clearProjectSession, persistCurrentDraft, recordingState]);
+  }, [clearProjectSession, persistCurrentDraft, recordingState, workspaceBusy]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -1331,29 +1908,49 @@ export function DubbingStudioView({
   }, [filteredCues, selectCue, selectedSymbol, snapshot]);
 
   useEffect(() => {
+    if (!batchConfirmationOpen) return;
+    const frame = window.requestAnimationFrame(() => batchCancelButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [batchConfirmationOpen]);
+
+  useEffect(() => {
     if (!currentCue) return;
     setNotesDraft(currentCue.progress.notes);
     setStatusDraft(visibleStatus(currentCue));
+    setGainDraft(currentCue.progress.gainDb);
   }, [
     currentCue?.progress.activeTake,
+    currentCue?.progress.gainDb,
     currentCue?.progress.notes,
     currentCue?.progress.status,
     currentCue?.symbol,
   ]);
 
   useEffect(() => {
-    onNavigationLockChange?.(notesDirty || savingTarget);
-  }, [notesDirty, onNavigationLockChange, savingTarget]);
+    invalidateLevelAnalysis();
+  }, [currentCue?.progress.activeTake, currentCue?.symbol, invalidateLevelAnalysis, referenceLanguage]);
 
   useEffect(() => {
-    if (!notesDirty) return;
+    onNavigationLockChange?.(
+      targetDirty || savingTarget || batchBusy || batchConfirmationOpen,
+    );
+  }, [batchBusy, batchConfirmationOpen, onNavigationLockChange, savingTarget, targetDirty]);
+
+  useLayoutEffect(() => {
+    // One derived owner prevents a preview finishing from resuming app music while a recording,
+    // build, or batch update still needs exclusive audio.
+    onExclusiveOperationChange?.(exclusiveOperationActive);
+  }, [exclusiveOperationActive, onExclusiveOperationChange]);
+
+  useEffect(() => {
+    if (!targetDirty) return;
     const protectDraft = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", protectDraft);
     return () => window.removeEventListener("beforeunload", protectDraft);
-  }, [notesDirty]);
+  }, [targetDirty]);
 
   useEffect(() => {
     if (recordingState !== "recording") return;
@@ -1373,7 +1970,15 @@ export function DubbingStudioView({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!snapshot || buildBusy || event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) {
+      if (
+        !snapshot ||
+        batchConfirmationOpen ||
+        workspaceBusy ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isTypingTarget(event.target)
+      ) {
         return;
       }
       if (event.key.toLocaleLowerCase() === "r") {
@@ -1402,7 +2007,7 @@ export function DubbingStudioView({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [buildBusy, cancelRecording, currentCue, navigate, playTake, recordingState, snapshot, startRecording, stopRecording]);
+  }, [batchConfirmationOpen, cancelRecording, currentCue, navigate, playTake, recordingState, snapshot, startRecording, stopRecording, workspaceBusy]);
 
   useEffect(() => stopPlayback, [selectedSymbol, stopPlayback]);
 
@@ -1439,6 +2044,23 @@ export function DubbingStudioView({
   const activeTake = currentCue?.progress.takes.find(
     (take) => take.id === currentCue.progress.activeTake,
   );
+  const rawPlaybackKey = activeTake && currentCue
+    ? rawAudioKey(currentCue.symbol, activeTake.id)
+    : "";
+  const processedPlaybackKey = activeTake && currentCue
+    ? `${currentCue.symbol}:processed:${activeTake.id}:${clampGain(gainDraft)}`
+    : "";
+  const referencePlaybackKey = currentCue
+    ? `${currentCue.symbol}:reference:${referenceLanguage}`
+    : "";
+  const finalPeak = !gainDirty && currentLevelAnalysis
+    ? currentLevelAnalysis.processed.peakDbfs
+    : null;
+  const processedClipping =
+    !gainDirty && (currentLevelAnalysis?.processedClippedSamples ?? 0) > 0;
+  const peakRisk =
+    processedClipping ||
+    (finalPeak !== null && finalPeak > -1);
 
   return (
     <div className="dubbing-studio" lang={language}>
@@ -1465,7 +2087,7 @@ export function DubbingStudioView({
         <button
           className="dub-ghost"
           type="button"
-          disabled={recordingState !== "idle" || buildBusy || savingTarget}
+          disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
           onClick={() => void closeProject()}
         >
           <FolderOpen size={17} aria-hidden="true" />
@@ -1480,7 +2102,7 @@ export function DubbingStudioView({
           <input
             type="search"
             value={search}
-            disabled={recordingState !== "idle" || buildBusy || savingTarget}
+            disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
             placeholder={copy.searchShort}
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
@@ -1488,7 +2110,7 @@ export function DubbingStudioView({
             <button
               type="button"
               aria-label={copy.close}
-              disabled={recordingState !== "idle" || buildBusy || savingTarget}
+              disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
               onClick={() => setSearch("")}
             >
               <X size={14} aria-hidden="true" />
@@ -1502,7 +2124,7 @@ export function DubbingStudioView({
               key={value}
               type="button"
               aria-pressed={filter === value}
-              disabled={recordingState !== "idle" || buildBusy || savingTarget}
+              disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
               onClick={() => setFilter(value)}
             >
               {copy[value]}
@@ -1515,7 +2137,7 @@ export function DubbingStudioView({
           <span className="dub-sr-only">{copy.inputDevice}</span>
           <select
             value={deviceId}
-            disabled={recordingState !== "idle" || buildBusy || savingTarget || devicesBusy || devices.length === 0}
+            disabled={recordingState !== "idle" || workspaceBusy || savingTarget || devicesBusy || devices.length === 0}
             onChange={(event) => setDeviceId(event.currentTarget.value)}
           >
             {devices.length === 0 && <option value="">{copy.noInput}</option>}
@@ -1526,7 +2148,7 @@ export function DubbingStudioView({
           <button
             type="button"
             aria-label={copy.refreshDevices}
-            disabled={recordingState !== "idle" || buildBusy || savingTarget || devicesBusy}
+            disabled={recordingState !== "idle" || workspaceBusy || savingTarget || devicesBusy}
             onClick={() => void loadDevices()}
           >
             {devicesBusy ? <SpinnerGap className="dub-spin" size={15} /> : <Circle size={10} weight="fill" />}
@@ -1536,7 +2158,7 @@ export function DubbingStudioView({
         <button
           className="dub-build"
           type="button"
-          disabled={recordingState !== "idle" || buildBusy || savingTarget || summary.recorded === 0}
+          disabled={recordingState !== "idle" || workspaceBusy || savingTarget || summary.recorded === 0}
           title={summary.recorded === 0 ? copy.buildNeedsTake : undefined}
           onClick={() => void buildTestRom()}
         >
@@ -1598,7 +2220,7 @@ export function DubbingStudioView({
       <div className="dub-workspace">
         <CueBrowser
           cues={filteredCues}
-          disabled={recordingState !== "idle" || buildBusy || savingTarget}
+          disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
           linesLabel={copy.lines}
           noResults={copy.noResults}
           onSelect={selectCue}
@@ -1621,7 +2243,7 @@ export function DubbingStudioView({
                 <button
                   type="button"
                   aria-label={copy.previous}
-                  disabled={filteredPosition <= 0 || recordingState !== "idle" || buildBusy || savingTarget}
+                  disabled={filteredPosition <= 0 || recordingState !== "idle" || workspaceBusy || savingTarget}
                   onClick={() => navigate(-1)}
                 >
                   <ArrowLeft size={18} aria-hidden="true" />
@@ -1629,7 +2251,7 @@ export function DubbingStudioView({
                 <button
                   type="button"
                   aria-label={copy.next}
-                  disabled={filteredPosition < 0 || filteredPosition >= filteredCues.length - 1 || recordingState !== "idle" || buildBusy || savingTarget}
+                  disabled={filteredPosition < 0 || filteredPosition >= filteredCues.length - 1 || recordingState !== "idle" || workspaceBusy || savingTarget}
                   onClick={() => navigate(1)}
                 >
                   <ArrowRight size={18} aria-hidden="true" />
@@ -1698,7 +2320,7 @@ export function DubbingStudioView({
                   <button
                     className="dub-record"
                     type="button"
-                    disabled={!deviceId || recordingState !== "idle" || buildBusy || savingTarget}
+                    disabled={!deviceId || recordingState !== "idle" || workspaceBusy || savingTarget}
                     onClick={() => void startRecording()}
                   >
                     {recordingState === "idle" ? (
@@ -1720,10 +2342,291 @@ export function DubbingStudioView({
               )}
             </section>
 
+            <section className="dub-level-panel" aria-labelledby="dub-level-title">
+              <div className="dub-level-heading">
+                <div className="dub-section-title">
+                  <span>03</span>
+                  <div>
+                    <h3 id="dub-level-title">{copy.audioBalance}</h3>
+                    <p>{copy.audioBalanceBody}</p>
+                  </div>
+                </div>
+                <button
+                  className="dub-match-all"
+                  ref={batchMatchButtonRef}
+                  type="button"
+                  disabled={
+                    summary.recorded === 0 ||
+                    recordingState !== "idle" ||
+                    workspaceBusy ||
+                    savingTarget ||
+                    analysisBusy ||
+                    batchConfirmationOpen
+                  }
+                  onClick={openMatchAllConfirmation}
+                >
+                  {batchBusy ? (
+                    <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                  ) : (
+                    <ArrowsLeftRight size={16} aria-hidden="true" />
+                  )}
+                  {batchBusy ? copy.matchingAll : copy.matchAll}
+                </button>
+              </div>
+
+              {!activeTake ? (
+                <div className="dub-level-empty">
+                  <SpeakerHigh size={24} aria-hidden="true" />
+                  <span>{copy.levelNeedsTake}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="dub-level-actions">
+                    <fieldset className="dub-reference-picker">
+                      <legend>{copy.referenceVoice}</legend>
+                      <button
+                        type="button"
+                        aria-pressed={referenceLanguage === "japanese"}
+                        disabled={recordingState !== "idle" || workspaceBusy || analysisBusy}
+                        onClick={() => {
+                          if (referenceLanguage === "japanese") return;
+                          stopPlayback();
+                          invalidateLevelAnalysis();
+                          setReferenceLanguage("japanese");
+                        }}
+                      >
+                        JP · {copy.japaneseReference}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={referenceLanguage === "english"}
+                        disabled={recordingState !== "idle" || workspaceBusy || analysisBusy}
+                        onClick={() => {
+                          if (referenceLanguage === "english") return;
+                          stopPlayback();
+                          invalidateLevelAnalysis();
+                          setReferenceLanguage("english");
+                        }}
+                      >
+                        EN · {copy.englishReference}
+                      </button>
+                    </fieldset>
+                    <button
+                      className="dub-analyze-level"
+                      type="button"
+                      disabled={gainDirty || recordingState !== "idle" || workspaceBusy || analysisBusy}
+                      title={gainDirty ? copy.saveGainFirst : undefined}
+                      onClick={() => void analyzeLevel()}
+                    >
+                      {analysisBusy ? (
+                        <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                      ) : (
+                        <Waveform size={16} aria-hidden="true" />
+                      )}
+                      {analysisBusy ? copy.analyzingLevels : copy.analyzeLevels}
+                    </button>
+                  </div>
+
+                  <div className="dub-level-metrics" aria-live="polite">
+                    <div>
+                      <span>{copy.takeActiveLevel}</span>
+                      <strong>{currentLevelAnalysis ? formatDbfs(currentLevelAnalysis.take.activeRmsDbfs) : copy.notMeasured}</strong>
+                      <small>{copy.activeRms}</small>
+                    </div>
+                    <div>
+                      <span>{copy.referenceActiveLevel}</span>
+                      <strong>{currentLevelAnalysis ? formatDbfs(currentLevelAnalysis.reference.activeRmsDbfs) : copy.notMeasured}</strong>
+                      <small>{referenceLanguage === "japanese" ? "JP" : "EN"} · {copy.activeRms}</small>
+                    </div>
+                    <div>
+                      <span>{copy.processedActiveLevel}</span>
+                      <strong>{currentLevelAnalysis && !gainDirty ? formatDbfs(currentLevelAnalysis.processed.activeRmsDbfs) : copy.notMeasured}</strong>
+                      <small>{copy.activeRms}</small>
+                    </div>
+                    <div>
+                      <span>{copy.currentGain}</span>
+                      <strong>{formatDb(currentCue.progress.gainDb, true)}</strong>
+                      <small>{activeTake.id}</small>
+                    </div>
+                    <div>
+                      <span>{copy.suggestedGain}</span>
+                      <strong>{currentLevelAnalysis ? formatDb(currentLevelAnalysis.recommendedGainDb, true) : copy.notMeasured}</strong>
+                      <small>{currentLevelAnalysis?.headroomLimited ? "−1 dBFS" : "RMS"}</small>
+                    </div>
+                    <div className={peakRisk ? "has-warning" : ""}>
+                      <span>{copy.finalPeak}</span>
+                      <strong>{finalPeak === null ? copy.notMeasured : formatDbfs(finalPeak, 2)}</strong>
+                      <small>
+                        {processedClipping
+                          ? copy.clipping
+                          : finalPeak === null
+                            ? copy.notMeasured
+                            : peakRisk
+                              ? "> −1 dBFS"
+                              : "≤ −1 dBFS"}
+                      </small>
+                    </div>
+                  </div>
+
+                  {currentLevelAnalysis?.unavailableReason && (
+                    <div className="dub-level-message is-warning" role="status">
+                      <Warning size={16} aria-hidden="true" />
+                      <span>
+                        {currentLevelAnalysis.unavailableReason === "take_silent"
+                          ? copy.silentTake
+                          : copy.silentReference}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="dub-gain-controls">
+                    <label className="dub-gain-range">
+                      <span>{copy.gain}</span>
+                      <input
+                        type="range"
+                        min={MIN_GAIN_DB}
+                        max={MAX_GAIN_DB}
+                        step="0.1"
+                        value={gainDraft}
+                        disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
+                        onChange={(event) => changeGainDraft(event.currentTarget.valueAsNumber)}
+                      />
+                      <small>{copy.gainHelp}</small>
+                    </label>
+                    <label className="dub-gain-number">
+                      <span className="dub-sr-only">{copy.gain}</span>
+                      <input
+                        type="number"
+                        min={MIN_GAIN_DB}
+                        max={MAX_GAIN_DB}
+                        step="0.1"
+                        value={gainDraft}
+                        disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
+                        onChange={(event) => changeGainDraft(event.currentTarget.valueAsNumber)}
+                      />
+                      <span>dB</span>
+                    </label>
+                    <button
+                      className="dub-apply-level"
+                      type="button"
+                      disabled={
+                        currentLevelAnalysis?.recommendedGainDb === null ||
+                        currentLevelAnalysis?.recommendedGainDb === undefined ||
+                        recordingState !== "idle" ||
+                        workspaceBusy ||
+                        savingTarget
+                      }
+                      onClick={() => void applySuggestedGain()}
+                    >
+                      {processingBusy ? (
+                        <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                      ) : (
+                        <ArrowsLeftRight size={16} aria-hidden="true" />
+                      )}
+                      {processingBusy ? copy.applyingGain : copy.applySuggestedGain}
+                    </button>
+                  </div>
+                  {gainDirty && <span className="dub-gain-unsaved">{copy.saveGainFirst}</span>}
+
+                  {(gainDirty && currentCue.progress.status === "approved") && (
+                    <div className="dub-level-message is-warning" role="status">
+                      <Warning size={16} aria-hidden="true" />
+                      <span>{copy.approvalReset}</span>
+                    </div>
+                  )}
+                  {currentLevelAnalysis?.headroomLimited && (
+                    <div className="dub-level-message" role="status">
+                      <CheckCircle size={16} aria-hidden="true" />
+                      <span>{copy.headroomLimited}</span>
+                    </div>
+                  )}
+                  {currentLevelAnalysis?.gainLimited && (
+                    <div className="dub-level-message is-warning" role="status">
+                      <Warning size={16} aria-hidden="true" />
+                      <span>
+                        {currentLevelAnalysis.gainLimit === "minimum"
+                          ? copy.minimumGainLimited
+                          : copy.maximumGainLimited}
+                      </span>
+                    </div>
+                  )}
+                  {peakRisk && (
+                    <div className="dub-level-message is-danger" role="alert">
+                      <Warning size={16} aria-hidden="true" />
+                      <span>{copy.peakRisk}</span>
+                    </div>
+                  )}
+
+                  <div className="dub-audio-compare" role="group" aria-label={copy.compareAudio}>
+                    <span>{copy.compareAudio}</span>
+                    <button
+                      type="button"
+                      aria-pressed={playingAudioKey === rawPlaybackKey}
+                      aria-label={playingAudioKey === rawPlaybackKey ? copy.pauseAudio : copy.playRawTake}
+                      disabled={workspaceBusy || savingTarget || recordingState !== "idle" || Boolean(audioBusyKey && audioBusyKey !== rawPlaybackKey)}
+                      onClick={() => void playTake(activeTake)}
+                    >
+                      {audioBusyKey === rawPlaybackKey ? (
+                        <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                      ) : playingAudioKey === rawPlaybackKey ? (
+                        <Pause size={16} weight="fill" aria-hidden="true" />
+                      ) : (
+                        <Play size={16} weight="fill" aria-hidden="true" />
+                      )}
+                      {copy.rawTake}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={playingAudioKey === processedPlaybackKey}
+                      aria-label={playingAudioKey === processedPlaybackKey ? copy.pauseAudio : copy.playFinalDs}
+                      disabled={gainDirty || workspaceBusy || savingTarget || recordingState !== "idle" || Boolean(audioBusyKey && audioBusyKey !== processedPlaybackKey)}
+                      title={gainDirty ? copy.saveGainFirst : undefined}
+                      onClick={() => void playProcessedPreview()}
+                    >
+                      {audioBusyKey === processedPlaybackKey ? (
+                        <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                      ) : playingAudioKey === processedPlaybackKey ? (
+                        <Pause size={16} weight="fill" aria-hidden="true" />
+                      ) : (
+                        <Play size={16} weight="fill" aria-hidden="true" />
+                      )}
+                      {copy.finalDs}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={playingAudioKey === referencePlaybackKey}
+                      aria-label={playingAudioKey === referencePlaybackKey ? copy.pauseAudio : copy.playReference}
+                      disabled={workspaceBusy || savingTarget || recordingState !== "idle" || Boolean(audioBusyKey && audioBusyKey !== referencePlaybackKey)}
+                      onClick={() => void playReferencePreview()}
+                    >
+                      {audioBusyKey === referencePlaybackKey ? (
+                        <SpinnerGap className="dub-spin" size={16} aria-hidden="true" />
+                      ) : playingAudioKey === referencePlaybackKey ? (
+                        <Pause size={16} weight="fill" aria-hidden="true" />
+                      ) : (
+                        <Play size={16} weight="fill" aria-hidden="true" />
+                      )}
+                      {copy.originalReference} · {referenceLanguage === "japanese" ? "JP" : "EN"}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {batchResult && (
+                <div className="dub-batch-result" role="status">
+                  <CheckCircle size={17} weight="fill" aria-hidden="true" />
+                  <strong>{batchResult.matched.toLocaleString()} {copy.matched}</strong>
+                  <span>{batchResult.headroomLimited.toLocaleString()} {copy.limitedForHeadroom}</span>
+                  <span>{batchResult.gainLimited.toLocaleString()} {copy.limitedByGain}</span>
+                  <span>{batchResult.skipped.toLocaleString()} {copy.skippedDuringMatch}</span>
+                </div>
+              )}
+            </section>
+
             <div className="dub-lower-grid">
               <section className="dub-takes-panel" aria-labelledby="dub-takes-title">
                 <div className="dub-section-title">
-                  <span>03</span>
+                  <span>04</span>
                   <h3 id="dub-takes-title">
                     {currentCue.progress.takes.length} {currentCue.progress.takes.length === 1 ? copy.take : copy.takes}
                   </h3>
@@ -1737,7 +2640,8 @@ export function DubbingStudioView({
                   <div className="dub-takes-list">
                     {[...currentCue.progress.takes].reverse().map((take, reverseIndex) => {
                       const isActive = take.id === currentCue.progress.activeTake;
-                      const isPlaying = take.id === playingTakeId;
+                      const takeAudioKey = rawAudioKey(currentCue.symbol, take.id);
+                      const isPlaying = takeAudioKey === playingAudioKey;
                       return (
                         <article key={take.id} className={isActive ? "is-active" : ""}>
                           <div className="dub-take-number">
@@ -1752,10 +2656,10 @@ export function DubbingStudioView({
                             type="button"
                             className="dub-play-take"
                             aria-label={isPlaying ? copy.pauseTake : copy.playTake}
-                            disabled={buildBusy || savingTarget || recordingState !== "idle" || Boolean(audioBusyTakeId && audioBusyTakeId !== take.id)}
+                            disabled={workspaceBusy || savingTarget || recordingState !== "idle" || Boolean(audioBusyKey && audioBusyKey !== takeAudioKey)}
                             onClick={() => void playTake(take)}
                           >
-                            {audioBusyTakeId === take.id ? (
+                            {audioBusyKey === takeAudioKey ? (
                               <SpinnerGap className="dub-spin" size={16} />
                             ) : isPlaying ? (
                               <Pause size={16} weight="fill" />
@@ -1769,7 +2673,7 @@ export function DubbingStudioView({
                             <button
                               className="dub-select-take"
                               type="button"
-                              disabled={recordingState !== "idle" || buildBusy || savingTarget}
+                              disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
                               onClick={() => void selectTake(take)}
                             >
                               {copy.selectTake}
@@ -1784,14 +2688,14 @@ export function DubbingStudioView({
 
               <section className="dub-notes-panel" aria-labelledby="dub-notes-title">
                 <div className="dub-section-title">
-                  <span>04</span>
+                  <span>05</span>
                   <h3 id="dub-notes-title">{copy.notes}</h3>
                 </div>
                 <label className="dub-field">
                   <span>{copy.status}</span>
                   <select
                     value={statusDraft}
-                    disabled={recordingState !== "idle" || buildBusy || savingTarget}
+                    disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
                     onChange={(event) => setStatusDraft(event.currentTarget.value as TargetStatus)}
                   >
                     {STATUS_ORDER.map((status) => (
@@ -1813,7 +2717,7 @@ export function DubbingStudioView({
                   <textarea
                     value={notesDraft}
                     maxLength={4_000}
-                    disabled={recordingState !== "idle" || buildBusy || savingTarget}
+                    disabled={recordingState !== "idle" || workspaceBusy || savingTarget}
                     placeholder={copy.notesPlaceholder}
                     onChange={(event) => setNotesDraft(event.currentTarget.value)}
                   />
@@ -1822,13 +2726,13 @@ export function DubbingStudioView({
                 <button
                   className="dub-save-target"
                   type="button"
-                  disabled={!notesDirty || savingTarget || recordingState !== "idle" || buildBusy}
+                  disabled={!targetDirty || savingTarget || recordingState !== "idle" || workspaceBusy}
                   onClick={() => void saveTarget()}
                 >
                   {savingTarget ? <SpinnerGap className="dub-spin" size={16} /> : <FloppyDisk size={16} />}
                   {copy.save}
                 </button>
-                {notesDirty && <span className="dub-unsaved">{copy.unsaved}</span>}
+                {targetDirty && <span className="dub-unsaved">{copy.unsaved}</span>}
               </section>
             </div>
           </main>
@@ -1836,6 +2740,82 @@ export function DubbingStudioView({
           <main className="dub-editor dub-empty-editor">{copy.noResults}</main>
         )}
       </div>
+
+      {batchConfirmationOpen && (
+        <div className="dub-confirm-backdrop">
+          <section
+            className="dub-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dub-match-all-confirm-title"
+            aria-describedby="dub-match-all-confirm-body dub-match-all-confirm-warning"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeMatchAllConfirmation();
+                return;
+              }
+              if (event.key !== "Tab") return;
+              const focusable = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+              );
+              if (focusable.length === 0) return;
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
+          >
+            <div className="dub-confirm-heading">
+              <ArrowsLeftRight size={22} aria-hidden="true" />
+              <div>
+                <span>{copy.audioBalance}</span>
+                <h2 id="dub-match-all-confirm-title">{copy.matchAllConfirmTitle}</h2>
+              </div>
+            </div>
+            <p id="dub-match-all-confirm-body">{copy.matchAllConfirm}</p>
+            <div className="dub-confirm-reference">
+              <span>{copy.referenceVoice}</span>
+              <strong>
+                {referenceLanguage === "japanese"
+                  ? `JP · ${copy.japaneseReference}`
+                  : `EN · ${copy.englishReference}`}
+              </strong>
+            </div>
+            <div
+              className="dub-confirm-warning"
+              id="dub-match-all-confirm-warning"
+            >
+              <Warning size={18} aria-hidden="true" />
+              <span>{copy.matchAllApprovalWarning}</span>
+            </div>
+            <div className="dub-confirm-actions">
+              <button
+                className="dub-confirm-cancel"
+                ref={batchCancelButtonRef}
+                type="button"
+                onClick={closeMatchAllConfirmation}
+              >
+                {copy.cancelMatchAll}
+              </button>
+              <button
+                className="dub-confirm-submit"
+                type="button"
+                disabled={batchBusy || savingTarget || batchRunRef.current}
+                onClick={() => void matchAllLevels()}
+              >
+                <ArrowsLeftRight size={16} aria-hidden="true" />
+                {copy.confirmMatchAll}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <footer className="dub-footer">
         <span><Circle size={8} weight="fill" aria-hidden="true" /> {snapshot.manifest.gameCode}</span>

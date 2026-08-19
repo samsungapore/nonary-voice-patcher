@@ -120,6 +120,76 @@ details. **Recorded**, **Needs review**, and **Approved** all require an active
 take. Changing the active take or processing settings invalidates the previous
 approval.
 
+## Match recording volume to the original voices
+
+A microphone recording can have safe peaks and still sound much quieter than
+the game. Peak level reports the single loudest sample; it does not describe
+the average level of the useful performance. The studio therefore compares
+**active RMS** over louder audio blocks and uses peak level only to preserve
+headroom. This is an energy gate, not speech recognition: a loud breath, click,
+or background noise can be included and should still be checked by ear.
+
+Select **Japanese** or **English** under **Original voice reference** before
+comparing a take. The choice is explicit: the studio reads the matching
+`SE_V####` entry from that authenticated original voice pack and never mixes
+measurements from the two performances. The selected pack must be available in
+the application resources.
+
+For a recorded cue:
+
+1. select its active take and the intended reference language;
+2. select **Compare levels**;
+3. compare **Your voice**, **Original voice**, **Final DS level**, **Saved
+   gain**, **Suggested gain**, and **Final DS peak**;
+4. select **Match reference** to store the suggestion, or enter a value in
+   **Dubbing gain** and save it;
+5. use **Raw take**, **Final DS**, and **Original reference** under **Compare
+   the result** for an A/B listening check.
+
+**Raw take** plays the committed WAV master without trim, project gain, or DS
+encoding. **Final DS** applies the saved processing, then passes the take
+through the same resampling and IMA ADPCM encode/decode path used by the ROM
+build. **Original reference** is the selected original DS voice decoded for
+playback. These previews make processing and codec changes audible without
+modifying the committed WAV master. Level analysis itself uses the trimmed,
+resampled take before project gain so its recommendation matches the signal
+that enters the DS encoder.
+
+The level comparison is deterministic. Audio is divided into non-overlapping
+328-sample blocks at 16,384 Hz, approximately 20 ms each; the final partial
+block is included. The energy gate is the higher of -50 dBFS and 20 dB below
+the loudest block. Active RMS is calculated over all samples in blocks at or
+above that gate. The unconstrained gain is:
+
+```text
+reference active RMS - take active RMS
+```
+
+The suggested gain stays within -60 dB to +24 dB and is reduced further when
+needed to avoid clipping before encoding and to keep the measured,
+IMA-decoded DS peak at or below -1 dBFS. Suggestions are stored in downward-safe
+0.1 dB steps and rechecked through the codec before they are offered. A
+headroom warning means this safety cap, rather than the active-block target,
+determined the result. If the suggestion reaches +24 dB, record again closer
+to the microphone or with a stronger clean input level; a large digital boost
+also raises room and input noise.
+
+**Match all recorded** applies the same calculation independently to every
+active take using the currently selected reference language. Unrecorded cues
+are outside the batch; an active take with no measurable energy above the gate
+is counted as skipped. The result also reports how many matches were limited by
+headroom or the gain range. Review each affected cue afterward.
+
+Matching applies one constant gain value. There is no hidden compressor,
+limiter, automatic gain riding, or change to the WAV master. Manual gain that
+would exceed the safety headroom is called out, and production export still
+rejects clipping. Any changed gain clears the cue's approval and returns an
+approved cue to **Needs review**.
+
+The previews isolate dialogue. Always finish the check in a test ROM: only the
+game can prove that the adjusted voice sits correctly beside its music, sound
+effects, scene timing, and playback volume.
+
 ## Project contents and integrity
 
 A normal project has this layout:
@@ -332,6 +402,27 @@ The native recorder rejects empty captures, input-stream failures, writer
 overflow, and recordings beyond 45 seconds. Shorten the take, close heavy audio
 applications, and record again. Clipping is reported rather than hidden; lower
 the input gain and replace a clipped performance.
+
+### The original reference cannot be measured or played
+
+Confirm that the selected Japanese or English voice pack is present in the
+application's resource layout and matches the bundled voice profile. Choose
+the other language only when it is the reference you actually want; it is not
+an automatic fallback for a missing pack.
+
+### Matching reaches +24 dB
+
+Record the line again with the performer closer to the microphone or with a
+stronger clean input level. The studio stops its suggestion at +24 dB because
+more digital gain would also amplify room tone and microphone noise. It does
+not hide the problem with compression or limiting.
+
+### The isolated preview is balanced but the game is not
+
+Use a small manual **Dubbing gain** adjustment, save it, rebuild the test ROM,
+and listen to the same scene again. The original-reference preview does not
+contain the scene's music, sound effects, or engine mix, so it cannot replace
+the in-game check.
 
 ### The project requires another ROM hash
 
