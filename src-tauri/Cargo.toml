@@ -57,7 +57,7 @@ required-features = ["dev-tools"]
 tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-cpal = { version = "0.16", optional = true }
+cpal = { version = "0.18", optional = true }
 hound = { version = "3.5", optional = true }
 rubato = { version = "0.16.2", optional = true }
 tauri = { version = "2", features = [], optional = true }
